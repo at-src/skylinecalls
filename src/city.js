@@ -7,7 +7,7 @@ const M_LAT = 110540;
 const mLng = (lat) => 111320 * Math.cos((lat * Math.PI) / 180);
 
 // building types (kept in sync with public/city3d.js)
-export const T = { HOUSE: 0, APARTMENT: 1, SHOPS: 2, OFFICE: 3, CIVIC: 4, LOW: 5, RELIGIOUS: 6 };
+export const T = { HOUSE: 0, APARTMENT: 1, SHOPS: 2, OFFICE: 3, CIVIC: 4, LOW: 5, RELIGIOUS: 6, MALL: 7 };
 // land-use zones
 export const Z = { RESIDENTIAL: 0, COMMERCIAL: 1, INDUSTRIAL: 2, PARK: 3, CONSTRUCTION: 4, WATER: 5, RELIGIOUS: 6, CEMETERY: 7, PITCH: 8, PARKING: 9 };
 
@@ -77,7 +77,7 @@ export function bake(xml, lat0, lng0, radius = 820) {
   const ring = (w) => w.refs.map((r) => nodes.get(r)).filter(Boolean).map(P);
   const closed = (pts) => { if (pts.length > 3 && pts[0][0] === pts.at(-1)[0] && pts[0][1] === pts.at(-1)[1]) pts.pop(); return pts; };
   const inside = (pts, pad = 0) => pts.some(([x, z]) => x * x + z * z < (radius + pad) ** 2);
-  const out = { origin: { lat: lat0, lng: lng0 }, radius, buildings: [], roads: [], zones: [], lamps: [], signals: [], stops: [], pois: [], trees: [], landmarks: [] };
+  const out = { origin: { lat: lat0, lng: lng0 }, radius, buildings: [], roads: [], zones: [], waterways: [], lamps: [], signals: [], stops: [], pois: [], trees: [], landmarks: [] };
 
   // --- zones (land use) ---
   const zoneOf = (t) => {
@@ -104,6 +104,14 @@ export function bake(xml, lat0, lng0, radius = 820) {
   }
   zonePolys.sort((a, b) => a.a - b.a); // smallest (most specific) zone wins
   const zoneAt = (x, z) => { for (const zp of zonePolys) if (zp.z !== Z.WATER && pip(x, z, zp.pts)) return zp.z; return Z.RESIDENTIAL; };
+
+  // --- waterways: rivers, canals, storm-water drains (rajakaluve) ---
+  for (const w of ways) {
+    const t = w.tags; if (!t.waterway) continue;
+    const pts = ring(w); if (pts.length < 2 || !inside(pts, 60)) continue;
+    const width = { river: 18, canal: 9, stream: 4, drain: 4, ditch: 2 }[t.waterway] || 3;
+    out.waterways.push({ p: pts.flat(), w: width });
+  }
 
   // --- roads ---
   const mainRoads = new Grid(40);
@@ -155,6 +163,7 @@ export function bake(xml, lat0, lng0, radius = 820) {
     if (/temple|church|mosque|religious|chapel|cathedral|shrine/.test(b) || zone === Z.RELIGIOUS) type = T.RELIGIOUS;
     else if (/school|college|university|hospital|public|civic|government|kindergarten|dormitory|grandstand|stadium/.test(b)) type = T.CIVIC;
     else if (/shed|garage|garages|roof|carport|hut|kiosk|service|hangar|warehouse|industrial|construction|container|toilets/.test(b) || zone === Z.INDUSTRIAL || (a < 28 && !lv)) type = T.LOW;
+    else if (/mall|supermarket|department_store/.test(b + ' ' + [...kinds].join(' ')) || ((/commercial|retail/.test(b) || zone === Z.COMMERCIAL) && a > 2600)) type = T.MALL;
     else if (/office/.test(b) || (/commercial/.test(b) && a > 900)) type = T.OFFICE;
     else if (/commercial|retail|supermarket|kiosk/.test(b) || shops > 0 || zone === Z.COMMERCIAL || (frontsMain && road.rk >= 2 && a > 70)) type = (a > 1600 && (zone === Z.COMMERCIAL || /commercial/.test(b))) ? T.OFFICE : T.SHOPS;
     else if (/apartments|residential|flats/.test(b) || a > 420) type = T.APARTMENT;
@@ -165,8 +174,11 @@ export function bake(xml, lat0, lng0, radius = 820) {
     if (Number.isFinite(lv) && lv > 0) floors = Math.round(lv) + (type === T.HOUSE || type === T.APARTMENT ? 0 : 0);
     else if (Number.isFinite(ht) && ht > 2) floors = Math.max(1, Math.round(ht / 3.2));
     else switch (type) {
-      case T.HOUSE: floors = a < 70 ? 2 + (r > 0.6 ? 1 : 0) : 3 + (r > 0.55 ? 1 : 0) - (r < 0.12 ? 1 : 0); break; // G+1 to G+3
-      case T.APARTMENT: floors = a < 700 ? 4 + Math.round(r * 2) : a < 1800 ? 5 + Math.round(r * 4) : 7 + Math.round(r * 7); break;
+      case T.HOUSE: { // ground floor only up to G+4, skewed by plot size
+        const base = a < 60 ? [1, 2, 2, 2, 3, 3] : a < 140 ? [1, 2, 2, 3, 3, 3, 4, 4, 5] : [2, 3, 3, 4, 4, 5, 5, 6];
+        floors = base[Math.floor(r * base.length)]; break; }
+      case T.APARTMENT: floors = a < 700 ? 4 + Math.round(r * 3) : a < 1800 ? 5 + Math.round(r * 5) : 8 + Math.round(r * 9); break;
+      case T.MALL: floors = 3 + Math.round(r * 3); break;
       case T.SHOPS: floors = (road.rk >= 3 ? 3 : 2) + Math.round(r * (a > 300 ? 3 : 2)); break;
       case T.OFFICE: floors = a < 1500 ? 4 + Math.round(r * 4) : 6 + Math.round(r * 8); break;
       case T.CIVIC: floors = 2 + Math.round(r * (a > 1500 ? 3 : 2)); break;
@@ -174,15 +186,19 @@ export function bake(xml, lat0, lng0, radius = 820) {
       default: floors = 1;
     }
     floors = Math.max(1, Math.min(40, floors));
-    const floorH = type === T.OFFICE ? 3.6 : type === T.LOW ? 4.2 : type === T.RELIGIOUS ? 4.5 : 3.2;
+    const floorH = type === T.OFFICE ? 3.6 : type === T.MALL ? 5.2 : type === T.LOW ? 4.2 : type === T.RELIGIOUS ? 4.5 : 3.2;
     const h = Math.round((floors * floorH + (type === T.LOW ? 0 : 0.9) + (type === T.HOUSE ? 1.0 : 0)) * 10) / 10;
 
     // how lit it is tonight (0..1): homes moderate, offices low, shops high
-    const occupancy = { [T.HOUSE]: 0.42, [T.APARTMENT]: 0.48, [T.SHOPS]: 0.55, [T.OFFICE]: 0.18, [T.CIVIC]: 0.12, [T.LOW]: 0.08, [T.RELIGIOUS]: 0.7 }[type] * (0.55 + r2 * 0.9);
+    const occupancy = { [T.HOUSE]: 0.42, [T.APARTMENT]: 0.48, [T.SHOPS]: 0.55, [T.OFFICE]: 0.18, [T.CIVIC]: 0.12, [T.LOW]: 0.08, [T.RELIGIOUS]: 0.7, [T.MALL]: 0.85 }[type] * (0.55 + r2 * 0.9);
 
     out.buildings.push({
       p: pts.flat(), h, t: type, fl: floors, c: Math.floor(hash(w.id + 'c') * 12), s: shops ? 1 : 0,
       m: frontsMain ? 1 : 0, o: Math.round(Math.min(1, occupancy) * 100) / 100,
+      // roof: 0 flat terrace, 1 Mangalore tile gable (old small houses), 2 metal sheet (sheds, top-floor rooms)
+      rf: type === T.LOW ? 2 : type === T.HOUSE && floors <= 2 && a < 160 && pts.length <= 5 && hash(w.id + 'r') < 0.22 ? 1 : 0,
+      // top floor set back from the edge (very common: a smaller room on the terrace)
+      sb: (type === T.HOUSE || type === T.APARTMENT || type === T.SHOPS) && floors >= 2 && a > 55 && hash(w.id + 's') < (type === T.HOUSE ? 0.5 : 0.3) ? 1 : 0,
       tank: (type === T.HOUSE || type === T.APARTMENT) && hash(w.id + 't') < 0.78 ? 1 : 0,
     });
     if (t.name && a > 350 && id++ < 60) { out.landmarks.push({ name: t.name, x: Math.round(cx), z: Math.round(cz) }); }
@@ -193,7 +209,7 @@ export function bake(xml, lat0, lng0, radius = 820) {
 }
 
 // ---------- cached access ----------
-const VERSION = 2;
+const VERSION = 3;
 const key = (lat, lng) => `${lat.toFixed(3)}_${lng.toFixed(3)}`;
 export async function cityAt(lat, lng, dir = 'data') {
   const f = `${dir}/city-v${VERSION}-${key(lat, lng)}.json`;

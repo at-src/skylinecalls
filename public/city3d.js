@@ -12,7 +12,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 const M_LAT = 110540;
 const mLng = (lat) => 111320 * Math.cos((lat * Math.PI) / 180);
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-const T = { HOUSE: 0, APARTMENT: 1, SHOPS: 2, OFFICE: 3, CIVIC: 4, LOW: 5, RELIGIOUS: 6 };
+const T = { HOUSE: 0, APARTMENT: 1, SHOPS: 2, OFFICE: 3, CIVIC: 4, LOW: 5, RELIGIOUS: 6, MALL: 7 };
 const Z = { RESIDENTIAL: 0, COMMERCIAL: 1, INDUSTRIAL: 2, PARK: 3, CONSTRUCTION: 4, WATER: 5, RELIGIOUS: 6, CEMETERY: 7, PITCH: 8, PARKING: 9 };
 
 // dusk atmosphere
@@ -38,6 +38,7 @@ const sharedUniforms = () => ({ uFog: { value: FOG }, uFogDensity: { value: 0.00
 
 // ------------------------------------------------------------------ buildings
 const buildingMat = () => new THREE.ShaderMaterial({
+  side: THREE.DoubleSide,
   uniforms: { ...sharedUniforms(), uRise: { value: 0 }, uLights: { value: 1 } },
   vertexShader: /* glsl */`
     attribute vec2 aWall;   // u along the wall (m), v height (m)
@@ -84,7 +85,7 @@ const buildingMat = () => new THREE.ShaderMaterial({
     }
 
     void main(){
-      vec3 n = normalize(vN);
+      vec3 n = normalize(vN); if (!gl_FrontFacing) n = -n;
       float type = vB.x, floors = vB.y, occ = vB.z, ci = vB.w;
       float seed = vM.x, shops = vM.z, mainRoad = vM.w;
       bool wall = abs(n.y) < .5;
@@ -99,7 +100,8 @@ const buildingMat = () => new THREE.ShaderMaterial({
       else if (type < 3.5) paint = vec3(.62,.66,.70);
       else if (type < 4.5) paint = mix(vec3(.86,.78,.60), vec3(.80,.36,.28), step(.6, h11(ci)));
       else if (type < 5.5) paint = vec3(.58,.56,.52);
-      else paint = mix(vec3(.97,.95,.88), vec3(.95,.62,.25), step(.65, h11(ci)));
+      else if (type < 6.5) paint = mix(vec3(.97,.95,.88), vec3(.95,.62,.25), step(.65, h11(ci)));
+      else paint = vec3(.70,.72,.74);
       paint = lin(paint);
       // weathering: monsoon stains and dirt near the ground
       float stain = vnoise(vec2(vWall.x * .35, vWall.y * .9) + seed * 40.) * .22 + vnoise(vec2(vWall.x * 2.1, vWall.y * .25) + seed * 13.) * .1;
@@ -137,8 +139,8 @@ const buildingMat = () => new THREE.ShaderMaterial({
         float lit = step(r1, occ) * uLights;
         lit *= step(.03, fract(r2 * 11. + uTime * .015 * step(.95, r2)));     // a few rooms switch on and off
         vec3 tube = vec3(.80,.90,1.0) * 1.9, bulb = vec3(1.0,.70,.38) * 1.6, tv = vec3(.45,.6,1.) * 1.3;
-        vec3 room = r2 < .62 ? tube : r2 < .92 ? bulb : tv;                   // most Indian homes use white tube lights
-        if (type > 2.5 && type < 3.5) room = vec3(.85,.92,1.) * 1.4;
+        vec3 room = r2 < .42 ? tube : r2 < .66 ? vec3(1.,.95,.86) * 1.7 : r2 < .84 ? bulb : r2 < .91 ? tv : r2 < .955 ? vec3(.35,1.,.65) * 1.2 : vec3(1.,.4,.85) * 1.2; // tube lights, LED, bulbs, TVs, coloured LED strips
+        if (type > 2.5 && type < 3.5 || type > 6.5) room = vec3(.85,.92,1.) * 1.4;
         vec3 glass = type > 2.5 && type < 3.5 ? lin(vec3(.20,.28,.36)) * (l * .6 + .15) : lin(vec3(.10,.11,.13)) * l;
         float glassMix = max(win, balcRecess * step(1.5, fy) * .0);
         col = mix(col, glass, glassMix);
@@ -159,7 +161,7 @@ const buildingMat = () => new THREE.ShaderMaterial({
           float rs = h21(vec2(sid, seed * 17.));
           float open = step(.28, rs);
           vec3 shutter = lin(vec3(.45,.46,.47)) * l * (.85 + .15 * step(.5, fract(sy * 6.)));
-          vec3 front = lin(mix(vec3(1.,.82,.58), vec3(.90,.94,1.), step(.6, rs))) * .62 * (.55 + rs * .5);
+          vec3 front = lin(rs < .5 ? vec3(.92,.96,1.) : rs < .8 ? vec3(1.,.88,.70) : vec3(1.,.97,.92)) * .7 * (.55 + rs * .5);
           float inFront = step(.06, sx) * step(sx, .94) * step(.15, sy) * step(sy, 2.75);
           col = mix(col, open > .5 ? lin(vec3(.25,.22,.18)) : shutter, inFront);
           emit += front * inFront * open * uLights;
@@ -171,13 +173,25 @@ const buildingMat = () => new THREE.ShaderMaterial({
           col = mix(col, boardCol * .25, board);
           emit += boardCol * board * (.8 + rs * .8) * uLights * step(.18, rs);
         }
+        // malls: full-height glass bands and a lit brand strip at the top
+        if (type > 6.5) {
+          float band = step(.6, fy) * step(fy, fh - .5);
+          col = mix(col, lin(vec3(.12,.18,.24)) * l + vec3(.02,.03,.04), band);
+          emit += vec3(.8,.9,1.) * band * (.35 + .4 * h21(vec2(floor(u / 6.), fl) + seed)) * uLights;
+          float strip = step(vH - 1.6, y) * step(y, vH - .4);
+          emit += mix(vec3(1.,.2,.3), vec3(.2,.6,1.), step(.5, seed)) * strip * 2.2 * uLights;
+        }
         // temples: warm lamps on the walls
         if (type > 5.5) emit += vec3(1.,.55,.2) * step(.8, h21(floor(vec2(u * .8, y * .8)) + seed)) * .8 * uLights;
         // contact shadow at the base
         col *= .55 + .45 * smoothstep(0., 2.2, y);
       } else {
         // flat concrete roofs, stained, with a lighter parapet line at the edge
-        vec3 roof = lin(mix(vec3(.40,.39,.37), vec3(.29,.28,.27), vnoise(vW.xz * .25 + seed * 50.)));
+        // roof finish varies by house: bare concrete, white heat-proof paint, red oxide, green or blue waterproofing
+        float rk = h11(seed * 91.3 + 2.);
+        vec3 rbase = rk < .42 ? vec3(.44,.43,.41) : rk < .66 ? vec3(.80,.80,.78) : rk < .78 ? vec3(.55,.28,.22) : rk < .88 ? vec3(.36,.50,.40) : rk < .95 ? vec3(.36,.46,.58) : vec3(.62,.58,.50);
+        vec3 roof = lin(rbase * mix(1., .7, vnoise(vW.xz * .25 + seed * 50.)));
+        roof *= .8 + .2 * vnoise(vW.xz * 3.1 + seed);                            // patchy monsoon stains
         if (type > 2.5 && type < 3.5) roof = lin(vec3(.40,.43,.47));
         if (type > 5.5) roof = lin(vec3(.95,.88,.70));
         col = roof * light(n) * .7 * (.85 + .15 * vnoise(vW.xz * 1.7));
@@ -192,7 +206,13 @@ const groundMat = () => new THREE.ShaderMaterial({
   uniforms: sharedUniforms(),
   vertexShader: 'varying float vDist; varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.); vW = w.xyz; vec4 mv = viewMatrix * w; vDist = -mv.z; gl_Position = projectionMatrix * mv; }',
   fragmentShader: /* glsl */`${COMMON} varying float vDist; varying vec3 vW;
-    void main(){ vec3 c = lin(vec3(.36,.33,.29)) * (.75 + .5 * vnoise(vW.xz * .07)) * (.85 + .15 * vnoise(vW.xz * .9));
+    void main(){
+      // open ground: red Bangalore earth, paved compounds and grassy verges, mixed in large patches
+      float a = vnoise(vW.xz * .018), b = vnoise(vW.xz * .045 + 17.), g = vnoise(vW.xz * .11 + 5.);
+      vec3 earth = vec3(.46,.32,.24), paved = vec3(.42,.41,.39), grass = vec3(.24,.32,.18);
+      vec3 c = mix(earth, paved, smoothstep(.35, .65, a));
+      c = mix(c, grass, smoothstep(.55, .75, b) * .8);
+      c = lin(c) * (.8 + .4 * g) * (.88 + .12 * vnoise(vW.xz * .9));
       gl_FragColor = vec4(fogMix(c * light(vec3(0,1,0)), vDist), 1.); }`,
 });
 
@@ -267,11 +287,13 @@ export class City {
     this.host = host;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.92;
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
     host.appendChild(this.renderer.domElement);
     this.scene = new THREE.Scene();
     this.scene.background = FOG.clone();
+    // same falloff as fogMix() in the custom shaders, so tanks, trees and cars fade with the buildings
+    this.scene.fog = new THREE.FogExp2(FOG.clone(), 0.0011);
     this.camera = new THREE.PerspectiveCamera(38, 1, 2, 9000);
     this.camera.position.set(0, 1400, 1600);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -335,10 +357,15 @@ export class City {
     this.setOrigin(city.origin.lat, city.origin.lng);
     const H = this.local(home.lat, home.lng);
     this.home = H;
+    this.extrasReset();
     this.zones(city);
+    this.waterways(city);
     this.buildings(city, H);
     this.roads(city);
     this.roofProps(city);
+    this.shelters(city);
+    this.stringLights();
+    this.flushExtras();
     this.lamps(city);
     this.trees(city);
     this.traffic(city);
@@ -381,23 +408,38 @@ export class City {
       const h = b.h, flip = s < 0 ? -1 : 1;
       this.footprints.push({ cx, cz, h, b });
       const meta = [b.t, b.fl, b.o, b.c], m2 = [seed, delay, b.s, b.m];
-      let u = 0;
-      for (let i = 0; i < n; i++) {
-        const j = (i + 1) % n;
-        const ax = p[i * 2], az = p[i * 2 + 1], bx = p[j * 2], bz = p[j * 2 + 1];
-        const len = Math.hypot(bx - ax, bz - az); if (len < 0.05) continue;
-        const nx = ((bz - az) / len) * flip, nz = (-(bx - ax) / len) * flip;
-        const v0 = pos.length / 3;
-        pos.push(ax, 0, az, bx, 0, bz, bx, h, bz, ax, h, az);
-        for (let q = 0; q < 4; q++) { nor.push(nx, 0, nz); bb.push(...meta); mm.push(...m2); hh.push(h); }
-        wall.push(u, 0, u + len, 0, u + len, h, u, h);
-        idx.push(v0, v0 + 1, v0 + 2, v0, v0 + 2, v0 + 3);
-        u += Math.ceil(len / 3.3) * 3.3 + 1.1; // start each wall on a fresh bay so windows don't straddle corners
-      }
-      const contour = []; for (let i = 0; i < n; i++) contour.push(new THREE.Vector2(p[i * 2], p[i * 2 + 1]));
-      const r0 = pos.length / 3;
-      for (let i = 0; i < n; i++) { pos.push(p[i * 2], h, p[i * 2 + 1]); nor.push(0, 1, 0); wall.push(0, h); bb.push(...meta); mm.push(...m2); hh.push(h); }
-      THREE.ShapeUtils.triangulateShape(contour, []).forEach((t) => idx.push(r0 + t[0], r0 + t[2], r0 + t[1]));
+      // one extruded prism of the footprint from y0 to y1 (walls + flat top)
+      const prism = (pp, y0, y1, top) => {
+        let u = 0; const m = pp.length / 2;
+        for (let i = 0; i < m; i++) {
+          const j = (i + 1) % m;
+          const ax = pp[i * 2], az = pp[i * 2 + 1], bx = pp[j * 2], bz = pp[j * 2 + 1];
+          const len = Math.hypot(bx - ax, bz - az); if (len < 0.05) continue;
+          const nx = ((bz - az) / len) * flip, nz = (-(bx - ax) / len) * flip;
+          const v0 = pos.length / 3;
+          pos.push(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y1, az);
+          for (let q = 0; q < 4; q++) { nor.push(nx, 0, nz); bb.push(...meta); mm.push(...m2); hh.push(top); }
+          wall.push(u, y0, u + len, y0, u + len, y1, u, y1);
+          idx.push(v0, v0 + 1, v0 + 2, v0, v0 + 2, v0 + 3);
+          u += Math.ceil(len / 3.3) * 3.3 + 1.1; // each wall starts on a fresh bay so windows don't straddle corners
+        }
+        const contour = []; for (let i = 0; i < m; i++) contour.push(new THREE.Vector2(pp[i * 2], pp[i * 2 + 1]));
+        const r0 = pos.length / 3;
+        for (let i = 0; i < m; i++) { pos.push(pp[i * 2], y1, pp[i * 2 + 1]); nor.push(0, 1, 0); wall.push(0, y1); bb.push(...meta); mm.push(...m2); hh.push(top); }
+        THREE.ShapeUtils.triangulateShape(contour, []).forEach((t) => idx.push(r0 + t[0], r0 + t[2], r0 + t[1]));
+      };
+      if (b.sb && h > 5) {
+        // top floor set back: a smaller room on the terrace, offset towards one side like real houses
+        const area = Math.abs(s) / 2, inset = Math.max(0.5, 1 - 2.4 / Math.sqrt(area));
+        const ox = (seed - 0.5) * 2.2, oz = (((bi * 7) % 11) / 11 - 0.5) * 2.2;
+        const inner = []; for (let i = 0; i < n; i++) inner.push(cx + ox + (p[i * 2] - cx) * inset, cz + oz + (p[i * 2 + 1] - cz) * inset);
+        const h1 = Math.max(3.2, h - 3.2);
+        prism(p, 0, h1, h1);
+        prism(inner, h1, h, h);
+        this.footprints.at(-1).roofH = h1;
+      } else prism(p, 0, h, h);
+      if (b.rf) this.slopedRoof(b, h, seed);
+      if (b.t === T.RELIGIOUS) this.gopuram(cx, cz, h, Math.sqrt(Math.abs(s) / 2));
     });
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -417,6 +459,105 @@ export class City {
       const top = new THREE.BufferGeometry(); top.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
       this.homeOutline = new THREE.Line(top, new THREE.LineBasicMaterial({ color: new THREE.Color(3, 1.7, 0.5), transparent: true }));
       this.fx.add(this.homeOutline);
+    }
+  }
+
+  // ---------- roofs, temples, shelters, drains, festive lights ----------
+  extrasReset() { this.ex = { pos: [], col: [], nor: [] }; this.festive = []; }
+  tri(a, b, c3, col) { const e = this.ex; const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c3, a)).normalize(); for (const v of [a, b, c3]) { e.pos.push(v.x, v.y, v.z); e.col.push(col.r, col.g, col.b); e.nor.push(n.x, n.y, n.z); } }
+  quad(a, b, c3, d, col) { this.tri(a, b, c3, col); this.tri(a, c3, d, col); }
+  box(x, y, z, sx, sy, sz, rot, col) {
+    const cs = Math.cos(rot), sn = Math.sin(rot), V = (dx, dy, dz) => new THREE.Vector3(x + dx * cs - dz * sn, y + dy, z + dx * sn + dz * cs);
+    const hx = sx / 2, hz = sz / 2, top = new THREE.Color(col).multiplyScalar(1.08);
+    const p = [V(-hx, 0, -hz), V(hx, 0, -hz), V(hx, 0, hz), V(-hx, 0, hz), V(-hx, sy, -hz), V(hx, sy, -hz), V(hx, sy, hz), V(-hx, sy, hz)];
+    this.quad(p[4], p[7], p[6], p[5], top); this.quad(p[0], p[1], p[5], p[4], col); this.quad(p[1], p[2], p[6], p[5], col); this.quad(p[2], p[3], p[7], p[6], col); this.quad(p[3], p[0], p[4], p[7], col);
+  }
+  // Mangalore tile gable (rf 1) or a single-slope metal sheet (rf 2) over the footprint's oriented rectangle
+  slopedRoof(b, h, seed) {
+    const p = b.p, n = p.length / 2; let best = 0, ang = 0;
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n, L = Math.hypot(p[j * 2] - p[i * 2], p[j * 2 + 1] - p[i * 2 + 1]); if (L > best) { best = L; ang = Math.atan2(p[j * 2 + 1] - p[i * 2 + 1], p[j * 2] - p[i * 2]); } }
+    const cs = Math.cos(ang), sn = Math.sin(ang); let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (let i = 0; i < n; i++) { const x = p[i * 2], z = p[i * 2 + 1], u = x * cs + z * sn, v = -x * sn + z * cs; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+    const W = (u, v, y) => new THREE.Vector3(u * cs - v * sn, y, u * sn + v * cs), o = 0.35;
+    u0 -= o; u1 += o; v0 -= o; v1 += o;
+    if (b.rf === 1) {
+      const vm = (v0 + v1) / 2, rise = Math.min(2.6, (v1 - v0) * 0.36);
+      const tile = new THREE.Color().setHSL(0.03 + seed * 0.02, 0.62, 0.30 + seed * 0.08);
+      this.quad(W(u0, v0, h), W(u1, v0, h), W(u1, vm, h + rise), W(u0, vm, h + rise), tile);
+      this.quad(W(u1, v1, h), W(u0, v1, h), W(u0, vm, h + rise), W(u1, vm, h + rise), tile.clone().multiplyScalar(0.82));
+      const gab = new THREE.Color('#d9cdb2');
+      this.tri(W(u0, v0, h), W(u0, vm, h + rise), W(u0, v1, h), gab); this.tri(W(u1, v1, h), W(u1, vm, h + rise), W(u1, v0, h), gab);
+    } else {
+      const sheet = new THREE.Color(seed < 0.5 ? '#5d7184' : '#7a4a35'), rise = 1.2;
+      this.quad(W(u0, v0, h + rise), W(u1, v0, h + rise), W(u1, v1, h), W(u0, v1, h), sheet);
+    }
+  }
+  // stepped temple tower with a kalasha and lamps
+  gopuram(x, z, h, size) {
+    const s = Math.max(4, Math.min(12, size * 0.6));
+    const tiers = 4; let y = h;
+    for (let i = 0; i < tiers; i++) {
+      const k = 1 - i * 0.2, th = 2.1;
+      this.box(x, y, z, s * k, th, s * k, 0, new THREE.Color(i % 2 ? '#e8b85c' : '#f1e3c4'));
+      y += th;
+      for (let a = 0; a < 6; a++) this.festive.push(x + Math.cos(a) * s * k * 0.55, y - 0.2, z + Math.sin(a) * s * k * 0.55, 1, 0.62, 0.25);
+    }
+    this.box(x, y, z, 0.8, 1.6, 0.8, 0, new THREE.Color('#d9a11c'));
+  }
+  shelters(city) {
+    const stops = city.stops || [];
+    for (let i = 0; i < stops.length; i += 2) {
+      const x = stops[i], z = stops[i + 1];
+      // face the nearest road
+      let best = Infinity, rot = 0;
+      for (const r of this.roadLines || []) for (let k = 1; k < r.pts.length; k++) { const [ax, az] = r.pts[k - 1], [bx, bz] = r.pts[k]; const d = Math.hypot((ax + bx) / 2 - x, (az + bz) / 2 - z); if (d < best) { best = d; rot = Math.atan2(bz - az, bx - ax); } }
+      const steel = new THREE.Color('#8f979e'), roof = new THREE.Color('#2d5e8c');
+      this.box(x, 2.6, z, 5.2, 0.18, 2.0, rot, roof);
+      this.box(x, 0, z, 5.0, 2.6, 0.12, rot, steel);
+      this.box(x, 0.45, z, 4.4, 0.1, 0.7, rot, new THREE.Color('#5d6066'));
+      this.festive.push(x, 2.45, z, 0.85, 0.95, 1);
+    }
+  }
+  waterways(city) {
+    const pos = [], zs = [], idx = [];
+    for (const wv of city.waterways || []) {
+      const p = wv.p, n = p.length / 2; if (n < 2) continue; const base = pos.length / 3;
+      for (let i = 0; i < n; i++) {
+        const a = [p[Math.max(0, i - 1) * 2], p[Math.max(0, i - 1) * 2 + 1]], b2 = [p[Math.min(n - 1, i + 1) * 2], p[Math.min(n - 1, i + 1) * 2 + 1]];
+        let dx = b2[0] - a[0], dz = b2[1] - a[1]; const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
+        pos.push(p[i * 2] - dz * wv.w / 2, 0.07, p[i * 2 + 1] + dx * wv.w / 2, p[i * 2] + dz * wv.w / 2, 0.07, p[i * 2 + 1] - dx * wv.w / 2); zs.push(5, 5);
+        if (i > 0) { const v = base + (i - 1) * 2; idx.push(v, v + 2, v + 1, v + 1, v + 2, v + 3); }
+      }
+    }
+    if (!pos.length) return;
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aZone', new THREE.Float32BufferAttribute(zs, 1)); g.setIndex(idx);
+    const m = zoneMat(); this.mats.push(m); this.world.add(new THREE.Mesh(g, m));
+  }
+  // Diwali-season string lights on a few houses: coloured bulbs along the parapet
+  stringLights() {
+    let s = 5; const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    const palette = [[1, 0.25, 0.2], [0.25, 1, 0.35], [0.3, 0.5, 1], [1, 0.85, 0.2], [1, 0.35, 0.9], [1, 1, 1]];
+    for (const f of this.footprints) {
+      if (f.b.t > 2 || rnd() > 0.07) continue;
+      const p = f.b.p, n = p.length / 2, y = (f.roofH || f.h) + 0.6, mono = rnd() < 0.4 ? palette[Math.floor(rnd() * 6)] : null;
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n, L = Math.hypot(p[j * 2] - p[i * 2], p[j * 2 + 1] - p[i * 2 + 1]);
+        for (let t = 0; t < L; t += 0.9) { const k = t / L, c3 = mono || palette[Math.floor(rnd() * 6)]; this.festive.push(p[i * 2] + (p[j * 2] - p[i * 2]) * k, y - Math.sin(k * Math.PI) * 0.35, p[i * 2 + 1] + (p[j * 2 + 1] - p[i * 2 + 1]) * k, c3[0], c3[1], c3[2]); }
+      }
+    }
+  }
+  flushExtras() {
+    const e = this.ex;
+    if (e.pos.length) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(e.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(e.nor, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(e.col, 3));
+      this.world.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+    }
+    if (this.festive.length) {
+      const pos = [], col = []; for (let i = 0; i < this.festive.length; i += 6) { pos.push(this.festive[i], this.festive[i + 1], this.festive[i + 2]); col.push(this.festive[i + 3] * 2.6, this.festive[i + 4] * 2.6, this.festive[i + 5] * 2.6); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      this.festivePts = new THREE.Points(g, new THREE.PointsMaterial({ size: 1.1, vertexColors: true, map: glowTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      this.world.add(this.festivePts);
     }
   }
 
@@ -459,12 +600,16 @@ export class City {
       for (let i = 0; i < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); z0 = Math.min(z0, p[i + 1]); z1 = Math.max(z1, p[i + 1]); }
       if (x1 - x0 < 5 || z1 - z0 < 5) continue;
       const jitter = (a, c) => a + (c - a) * (0.3 + rnd() * 0.4);
-      if (b.tank) tanks.push(jitter(x0, x1), f.h, jitter(z0, z1), 0.75 + rnd() * 0.35);
-      if (rnd() < (b.t === 1 ? 0.9 : 0.55)) heads.push(jitter(x0, x1), f.h, jitter(z0, z1), rnd() * Math.PI);
+      if (b.rf) continue;
+      // the tank always sits on something: on the set-back room if there is one, else on top of a stair headroom
+      if (f.roofH != null) { if (b.tank) tanks.push(f.cx, f.h, f.cz, 0.75 + rnd() * 0.35); continue; }
+      const hx = jitter(x0, x1), hz = jitter(z0, z1);
+      if (b.tank || rnd() < (b.t === 1 ? 0.9 : 0.55)) heads.push(hx, f.h, hz, rnd() * Math.PI);
+      if (b.tank) tanks.push(hx, f.h + 2.5, hz, 0.75 + rnd() * 0.35);
     }
     const tankMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1.5, 14), new THREE.MeshLambertMaterial({ color: '#34363a' }), tanks.length / 4);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
-    for (let i = 0; i < tanks.length / 4; i++) { const r = tanks[i * 4 + 3]; m4.compose(new THREE.Vector3(tanks[i * 4], tanks[i * 4 + 1] + 2.4, tanks[i * 4 + 2]), q, new THREE.Vector3(r, 1, r)); tankMesh.setMatrixAt(i, m4); }
+    for (let i = 0; i < tanks.length / 4; i++) { const r = tanks[i * 4 + 3]; m4.compose(new THREE.Vector3(tanks[i * 4], tanks[i * 4 + 1] + 0.75, tanks[i * 4 + 2]), q, new THREE.Vector3(r, 1, r)); tankMesh.setMatrixAt(i, m4); }
     const headMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(2.8, 2.5, 3.2), new THREE.MeshLambertMaterial({ color: '#8a857b' }), heads.length / 4);
     for (let i = 0; i < heads.length / 4; i++) { q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), heads[i * 4 + 3]); m4.compose(new THREE.Vector3(heads[i * 4], heads[i * 4 + 1] + 1.25, heads[i * 4 + 2]), q, new THREE.Vector3(1, 1, 1)); headMesh.setMatrixAt(i, m4); }
     // the tanks sit on a little stand above the headroom
@@ -505,7 +650,7 @@ export class City {
     const heads = [], headCol = [];
     for (let i = 0; i < n; i++) {
       const [x, z, kind] = spots[i];
-      const c = kind === 2 ? [1, 0.6, 0.25] : [0.85, 0.93, 1]; // most lamps are white LEDs now; a few old sodium ones
+      const roll = (i * 0.618) % 1; const c = kind === 2 || roll < 0.2 ? [1, 0.58, 0.24] : roll < 0.3 ? [1, 0.95, 0.85] : [0.82, 0.9, 1];
       cols.set(c, i * 3);
       m4.compose(new THREE.Vector3(x, 0.2, z), q, new THREE.Vector3(18, 1, 18)); pools.setMatrixAt(i, m4);
       heads.push(x, 8.5, z); headCol.push(c[0] * 3, c[1] * 3, c[2] * 3);
@@ -551,16 +696,26 @@ export class City {
       for (let i = 0; i < count; i++) { const x = x0 + rnd() * (x1 - x0), z = z0 + rnd() * (z1 - z0); if (!occ.has(key(x, z))) spots.push([x, z, 1.1 + rnd() * 0.5]); }
     }
     const n = Math.min(spots.length, 7000);
+    // lumpy, faceted canopy instead of a smooth ball; each tree is spun randomly so the lumps differ
     const crownG = new THREE.IcosahedronGeometry(1, 2);
-    const crown = new THREE.InstancedMesh(crownG, new THREE.MeshLambertMaterial({ color: '#ffffff' }), n);
+    const cp = crownG.attributes.position, v = new THREE.Vector3();
+    for (let i = 0; i < cp.count; i++) {
+      v.fromBufferAttribute(cp, i).normalize();
+      const bump = 1 + 0.16 * Math.sin(v.x * 7.1 + v.z * 3.3) * Math.cos(v.y * 6.3 - v.x * 2.1) + 0.1 * Math.sin(v.z * 11 + v.y * 5);
+      cp.setXYZ(i, v.x * bump, v.y * bump * (v.y < 0 ? 0.55 : 1), v.z * bump); // flatter underside
+    }
+    crownG.computeVertexNormals();
+    const crown = new THREE.InstancedMesh(crownG, new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), n);
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.25, 0.35, 1, 6), new THREE.MeshLambertMaterial({ color: '#3a2c22' }), n);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
-    const greens = ['#2f5a2a', '#3a6b2e', '#26502a', '#456f2f', '#355f34', '#4b7a35'];
+    const greens = ['#3a6a30', '#4a7d34', '#2f5e2e', '#5a8538', '#40703a', '#62903e', '#557a2c'];
     for (let i = 0; i < n; i++) {
       const [x, z, k] = spots[i], r = (2.4 + rnd() * 2.6) * k, ht = 2.2 + rnd() * 2 * k;
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * Math.PI * 2);
       m4.compose(new THREE.Vector3(x, ht + r * 0.55, z), q, new THREE.Vector3(r, r * (0.62 + rnd() * 0.2), r)); crown.setMatrixAt(i, m4);
-      crown.setColorAt(i, c.set(rnd() < 0.06 ? '#9a3b22' : greens[Math.floor(rnd() * greens.length)])); // a few flowering gulmohars
-      m4.compose(new THREE.Vector3(x, ht / 2, z), q, new THREE.Vector3(1, ht, 1)); trunk.setMatrixAt(i, m4);
+      const fl = rnd();
+      crown.setColorAt(i, c.set(fl < 0.04 ? '#b8482a' : fl < 0.07 ? '#a87fb8' : fl < 0.09 ? '#c9a52e' : greens[Math.floor(rnd() * greens.length)])); // a few gulmohar, jacaranda and copper-pod trees in flower
+      q.identity(); m4.compose(new THREE.Vector3(x, ht / 2, z), q, new THREE.Vector3(1, ht, 1)); trunk.setMatrixAt(i, m4);
     }
     this.world.add(crown, trunk);
   }
@@ -626,11 +781,12 @@ export class City {
   }
 
   beacon(H) {
-    const beamGeo = new THREE.CylinderGeometry(1.8, 4.5, 240, 24, 1, true); beamGeo.translate(0, 120, 0);
+    const beamGeo = new THREE.CylinderGeometry(0.5, 1.6, 150, 24, 1, true); beamGeo.translate(0, 75, 0);
     this.beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, uniforms: { uTime: { value: 0 } },
-      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
-      fragmentShader: 'uniform float uTime; varying vec2 vUv; void main(){ float a = pow(1. - vUv.y, 2.4) * (.45 + .12 * sin(uTime * 2.)); gl_FragColor = vec4(vec3(1.4,.8,.25) * a, a); }',
+      // soft edges (facing ratio) and a quick fade upwards, so it reads as a shaft of light, not a slab
+      vertexShader: 'varying vec2 vUv; varying float vF; void main(){ vUv = uv; vec4 mv = modelViewMatrix * vec4(position,1.); vF = abs(dot(normalize(normalMatrix * normal), normalize(-mv.xyz))); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'uniform float uTime; varying vec2 vUv; varying float vF; void main(){ float a = pow(1. - vUv.y, 3.5) * pow(vF, 2.5) * (.55 + .15 * sin(uTime * 2.)); gl_FragColor = vec4(vec3(1.4,.8,.25) * a, a); }',
     }));
     this.beam.position.set(H.x, this.homeH, H.z); this.fx.add(this.beam);
     this.ring = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 64), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.3, 0.35), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
