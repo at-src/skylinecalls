@@ -213,3 +213,9 @@ p { text-wrap: pretty; }
 /* label hidden when it collides with a more important one */
 .pin.quiet .pin-tag { opacity: 0; }
 .pin-tag { transition: opacity 250ms var(--ease); }
+
+/* zoom buttons for trackpads without a scroll wheel */
+.zoom { position: absolute; right: var(--s4); top: 50%; transform: translateY(-50%); z-index: 5; display: flex; flex-direction: column; border-radius: var(--r-md); overflow: hidden; background: rgba(15, 15, 13, 0.72); backdrop-filter: blur(14px); border: 1px solid var(--line2); }
+.zoom button { width: 38px; height: 38px; display: grid; place-items: center; font-size: 18px; line-height: 1; color: var(--muted); transition: color 300ms var(--ease), background 300ms var(--ease); }
+.zoom button:hover { color: var(--text); background: var(--raise2); }
+.zoom button + button { border-top: 1px solid var(--line); }

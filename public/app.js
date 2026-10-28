@@ -40,9 +40,11 @@ async function initCity() {
   scene.postProcessStages.fxaa.enabled = true;
   viewer.resolutionScale = Math.min(window.devicePixelRatio || 1, 2);
   tileset = await Cesium.Cesium3DTileset.fromUrl(`https://tile.googleapis.com/v1/3dtiles/root.json?key=${cfg.mapsKey}`, {
-    showCreditsOnScreen: true, maximumScreenSpaceError: 10,
+    showCreditsOnScreen: true, maximumScreenSpaceError: 6,
   });
   scene.primitives.add(tileset);
+  const ctl = scene.screenSpaceCameraController;
+  ctl.minimumZoomDistance = 35; ctl.maximumZoomDistance = 9000; ctl.inertiaZoom = 0.6;
   // start over Bengaluru while home loads
   aim({ lat: 12.9716, lng: 77.5946 }, 3200, -0.75);
   scene.postRender.addEventListener(placePins);
@@ -50,8 +52,8 @@ async function initCity() {
   // stop orbiting while the user drags; resume after a pause
   const h = new Cesium.ScreenSpaceEventHandler(scene.canvas);
   let resume;
-  const hold = () => { orbit.on = false; clearTimeout(resume); resume = setTimeout(() => { syncOrbitFromCamera(); orbit.on = true; }, 6000); };
-  [Cesium.ScreenSpaceEventType.LEFT_DOWN, Cesium.ScreenSpaceEventType.WHEEL, Cesium.ScreenSpaceEventType.RIGHT_DOWN].forEach((t) => h.setInputAction(hold, t));
+  const hold = () => { orbit.on = false; clearTimeout(resume); resume = setTimeout(() => { syncOrbitFromCamera(); orbit.on = true; }, 8000); };
+  [Cesium.ScreenSpaceEventType.LEFT_DOWN, Cesium.ScreenSpaceEventType.WHEEL, Cesium.ScreenSpaceEventType.RIGHT_DOWN, Cesium.ScreenSpaceEventType.MIDDLE_DOWN, Cesium.ScreenSpaceEventType.PINCH_START].forEach((t) => h.setInputAction(hold, t));
 }
 
 const pos = (p, up = 0) => Cesium.Cartesian3.fromDegrees(p.lng, p.lat, (p.h ?? ground) + up);
@@ -62,10 +64,16 @@ function aim(p, range, pitch = orbit.pitch) {
 }
 function tickOrbit() {
   if (!orbit.on || !orbit.center) return;
-  orbit.heading += 0.0009;
+  orbit.heading += 0.0006;
   viewer.camera.lookAt(pos(orbit.center), new Cesium.HeadingPitchRange(orbit.heading, orbit.pitch, orbit.range));
 }
-function syncOrbitFromCamera() { orbit.heading = viewer.camera.heading; }
+// adopt wherever the user left the camera (distance, angle, direction) instead of snapping back
+function syncOrbitFromCamera() {
+  const c = viewer.camera;
+  orbit.heading = c.heading; orbit.pitch = Math.min(-0.15, c.pitch);
+  const r = Cesium.Cartesian3.magnitude(c.position);
+  if (Number.isFinite(r) && r > 20) orbit.range = r;
+}
 
 // smooth camera move to frame a point (and optionally home), then keep orbiting there
 function frame(p, { range = 520, pitch = -0.62, duration = 2.2 } = {}) {
@@ -115,7 +123,7 @@ async function setHome(h, persist = true) {
   const pts = taught ? [door.anchor, ...door.steps, ...(door.hubs || [])].map((p) => ({ ...p })) : [];
   if (pts.length) await sampleHeights(pts);
   drawWorld(taught, pts);
-  frame(home, { range: 620, pitch: -0.62, duration: 2.6 });
+  frame(home, { range: 340, pitch: -0.55, duration: 2.6 });
   await waitTiles(20);
   veil(false);
   if (!callActive) status(expecting ? 'Someone is on the way' : 'Watching the door', expecting);
@@ -352,9 +360,12 @@ async function refreshExpect() {
 
 // ======================= ui wiring =======================
 function bindUi() {
-  $('#v3d').onclick = () => { setSeg('v3d'); frame(orbit.center || home, { range: 620, pitch: -0.62, duration: 1.4 }); };
+  $('#v3d').onclick = () => { setSeg('v3d'); frame(orbit.center || home, { range: 340, pitch: -0.55, duration: 1.4 }); };
   $('#vtop').onclick = () => { setSeg('vtop'); frame(orbit.center || home, { range: 900, pitch: -1.5, duration: 1.4 }); };
-  $('#recenter').onclick = () => home && frame(home, { range: 620, pitch: -0.62 });
+  $('#recenter').onclick = () => home && frame(home, { range: 340, pitch: -0.55 });
+  const zoom = (f) => { if (!orbit.center) return; syncOrbitFromCamera(); orbit.range = Math.max(40, Math.min(9000, orbit.range * f)); aim(orbit.center, orbit.range, orbit.pitch); };
+  $('#zin').onclick = () => zoom(0.6);
+  $('#zout').onclick = () => zoom(1.6);
   $('#allow').onclick = () => resolve('allowed');
   $('#block').onclick = () => resolve('blocked');
   $('#playDemo').onclick = async () => {
