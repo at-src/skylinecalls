@@ -474,8 +474,8 @@ export class City {
     this.stepTraffic(dt);
     if (this.beam) { this.beam.material.uniforms.uTime.value = t; }
     if (this.ring) {
-      const ph = (t * (this.expecting ? 0.7 : 0.4)) % 1, R = 6 + ph * (this.expecting ? 70 : 26);
-      this.ring.scale.setScalar(R); this.ring.material.opacity = (1 - ph) * (this.expecting ? 0.9 : 0.45);
+      const ph = (t * (this.expecting ? 0.6 : 0.4)) % 1, R = 6 + ph * (this.expecting ? 42 : 24);
+      this.ring.scale.setScalar(R); this.ring.material.opacity = (1 - ph) * (this.expecting ? 0.55 : 0.35);
     }
     if (this.homeOutline) this.homeOutline.material.opacity = 0.7 + 0.3 * Math.sin(t * 3);
     if (this.pathMat) {
