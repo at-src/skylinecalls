@@ -12,6 +12,7 @@ import { setPosition, planRide, startSim, stopSim, getRider, advance } from './r
 import { startTelegram } from './telegram.js';
 import { findPlace } from './maps.js';
 import { replay } from './demo/replay.js';
+import { cityAt } from './city.js';
 
 const PORT = Number(env.PORT || 3200);
 const TOKEN = env.TOOL_TOKEN || '';
@@ -105,6 +106,14 @@ const routes = {
     emit('home.set', home);
     return home;
   },
+  // 3D city around a point (OpenStreetMap, baked and cached). Snaps to the demo city when close to it.
+  'GET /api/city': async (b, q) => {
+    const lat = Number(q.get('lat')), lng = Number(q.get('lng'));
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { error: 'lat/lng required' };
+    const near = (a, c) => Math.abs(a - c) < 0.004;
+    if (near(lat, 12.9128) && near(lng, 77.6374)) return JSON.parse(readFileSync('public/city/hsr.json', 'utf8'));
+    return cityAt(lat, lng);
+  },
   'POST /api/home/clear': async () => { save('home', null); return { ok: true }; },
   // scripted demo call through the real tools (no phone calls)
   'POST /api/demo/replay': async (b) => { replay(TOOLS, { pace: Number(b.pace || 1) }); return { ok: true }; },
@@ -171,7 +180,7 @@ const server = createServer(async (req, res) => {
     const f = 'public' + (url.pathname === '/' ? '/index.html' : url.pathname);
     if (req.method === 'GET' && !f.includes('..') && existsSync(f)) {
       const type = { html: 'text/html', js: 'text/javascript', css: 'text/css', json: 'application/json', svg: 'image/svg+xml' }[f.split('.').pop()] || 'application/octet-stream';
-      res.writeHead(200, { 'Content-Type': type }); return res.end(readFileSync(f));
+      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }); return res.end(readFileSync(f));
     }
     json(res, 404, { error: 'not found' });
   } catch (e) {

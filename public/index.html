@@ -9,9 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link href="https://cesium.com/downloads/cesiumjs/releases/1.123/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <link href="/style.css" rel="stylesheet" />
-  <script src="https://cesium.com/downloads/cesiumjs/releases/1.123/Build/Cesium/Cesium.js"></script>
+  <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/" } }</script>
 </head>
 <body>
   <a class="skip" href="#call">Skip to the live call</a>
@@ -19,7 +18,7 @@
     <!-- ============ the city ============ -->
     <section class="stage" aria-label="3D map of the neighbourhood">
       <div id="globe"></div>
-      <div class="veil" id="veil"><div class="veil-in"><span class="spin"></span><span id="veilText">Loading the neighbourhood in 3D</span></div></div>
+      <div class="veil" id="veil"><div class="veil-in"><span class="spin"></span><span id="veilText">Building the neighbourhood</span></div></div>
 
       <div class="hud top-left">
         <div class="brand"><span class="mark" aria-hidden="true"></span><span>ToTheDoor</span></div>
