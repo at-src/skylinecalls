@@ -166,4 +166,5 @@ Every tool response is short, plain text the agent can say out loud.
 (Add any choice made during the build that this spec didn't cover.)
 
 - 2026-10-28: Maps on Google only. Both providers were tested in HSR Layout and both cover everything we need; using two adds a "which one?" decision on every call for no clear gain. Google is kept because it has Address Descriptors (landmarks relative to a point, made for India) and directions that already name landmarks ("pass by the lake on the right"). Mappls key stays in `.env` unused.
+- 2026-10-28: Voice: Cartesia `sonic-3`, male Hindi voice (on Bolna's flat-rate list). Sarvam voices rejected as robotic on the phone line. Agent speaks as the customer's household, never says "ToTheDoor". Call opening copies a real delivery call: the agent picks up with "Hello?", the rider says who he is, the agent replies in one short line ("Haan ji, bataiye, abhi kahan pahunche ho?"). No introductions or explanations.
 - 2026-10-28: Bolna account on trial plan: wallet 500 (USD cents), 2 concurrent calls, outbound to verified numbers only.
