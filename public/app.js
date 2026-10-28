@@ -244,6 +244,33 @@ async function refreshExpect() {
   } catch {}
 }
 
+// ======================= time of day =======================
+const PLAY = 'M8 5.5v13a1 1 0 001.5.86l11-6.5a1 1 0 000-1.72l-11-6.5A1 1 0 008 5.5z', PAUSE = 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z';
+const fmtHour = (h) => { const m = Math.floor((h % 1) * 60), hh = Math.floor(h) % 24; return `${hh % 12 || 12}:${String(m).padStart(2, '0')} ${hh < 12 ? 'am' : 'pm'}`; };
+function bindClock() {
+  const slider = $('#tSlider'), label = $('#tLabel'), icon = $('#tIcon'), live = $('#tLive'), play = $('#tPlay');
+  let dragging = false;
+  const mode = (m) => {
+    live.classList.toggle('on', m === 'live'); live.setAttribute('aria-pressed', String(m === 'live'));
+    play.setAttribute('aria-pressed', String(m === 'play')); $('#tPlayIcon').setAttribute('d', m === 'play' ? PAUSE : PLAY);
+  };
+  // ?hour=7.5 opens the city at a fixed hour (used for screenshots)
+  const fixed = parseFloat(new URLSearchParams(location.search).get('hour'));
+  if (!Number.isNaN(fixed)) { city.setHour(fixed); mode('manual'); }
+  slider.addEventListener('pointerdown', () => (dragging = true));
+  window.addEventListener('pointerup', () => (dragging = false));
+  slider.oninput = () => { city.setHour(parseFloat(slider.value)); mode('manual'); };
+  live.onclick = () => { city.setLive(); mode('live'); };
+  play.onclick = () => { if (city.tod.mode === 'play') { city.setHour(city.hour); mode('manual'); } else { city.playDay(60); mode('play'); } };
+  let last = '', lastMode = '';
+  city.onFrame.push(() => {
+    const h = city.hour, txt = fmtHour(h);
+    if (city.tod.mode !== lastMode) { lastMode = city.tod.mode; mode(lastMode); }
+    if (!dragging) slider.value = h.toFixed(2);
+    if (txt !== last) { label.textContent = txt; last = txt; icon.classList.toggle('night', h < 6 || h >= 18.8); }
+  });
+}
+
 // ======================= ui wiring =======================
 function bindUi() {
   const H = () => (city.home ? city.home.clone() : new THREE.Vector3());
@@ -251,6 +278,7 @@ function bindUi() {
   $('#vtop').onclick = () => { setSeg('vtop'); city.look(H(), 700, 0.05, null, 1.6); };
   $('#recenter').onclick = () => city.look(H(), 300, 1.12, null, 1.6);
   const zoom = (f) => { const d = city.camera.position.distanceTo(city.controls.target); const sph = new THREE.Spherical().setFromVector3(city.camera.position.clone().sub(city.controls.target)); city.look(city.controls.target.clone(), Math.max(50, Math.min(3000, d * f)), sph.phi, sph.theta, 0.7); };
+  bindClock();
   $('#zin').onclick = () => zoom(0.6);
   $('#zout').onclick = () => zoom(1.6);
   $('#changeHome').onclick = async () => { localStorage.removeItem('ttd-home'); await fetch('/api/home/clear', { method: 'POST' }); home = null; $('#q').value = ''; $('#results').innerHTML = ''; $('#useLoc').disabled = false; showOnboard(); };

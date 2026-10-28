@@ -1,4 +1,4 @@
-// ToTheDoor city renderer: an Indian neighbourhood at dusk, built from OpenStreetMap in three.js.
+// ToTheDoor city renderer: an Indian neighbourhood through the day and night, built from OpenStreetMap in three.js.
 // Every building is drawn by type (house, apartment, shops, office, civic, temple, shed) with its own colours,
 // floors, windows, balconies, shop signboards and rooftop water tanks. Land use colours the ground (parks, pitches,
 // construction, water). Street lights come from the map; traffic runs where the roads are busy.
@@ -15,31 +15,76 @@ const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const T = { HOUSE: 0, APARTMENT: 1, SHOPS: 2, OFFICE: 3, CIVIC: 4, LOW: 5, RELIGIOUS: 6, MALL: 7 };
 const Z = { RESIDENTIAL: 0, COMMERCIAL: 1, INDUSTRIAL: 2, PARK: 3, CONSTRUCTION: 4, WATER: 5, RELIGIOUS: 6, CEMETERY: 7, PITCH: 8, PARKING: 9 };
 
-// dusk atmosphere
+// atmosphere; every value below is rewritten each frame by applyTime() for the hour of the day
 const FOG = new THREE.Color('#2a3146');
 const SUN = new THREE.Vector3(-0.62, 0.26, 0.42).normalize();
+
+// One set of lighting uniforms shared by reference across every custom shader, so the time of day
+// changes the whole city at once.
+const ENV = {
+  uFog: { value: FOG }, uFogDensity: { value: 0.0011 }, uSun: { value: SUN },
+  uSunCol: { value: new THREE.Vector3(0.85, 0.51, 0.31) }, uSkyCol: { value: new THREE.Vector3(0.10, 0.12, 0.185) }, uBounce: { value: new THREE.Vector3(0.044, 0.033, 0.026) },
+  uNight: { value: 0.8 },  // 0 broad daylight .. 1 full night: how much artificial light shows
+  uOcc: { value: 1 },      // share of homes with lights on at this hour
+  uShop: { value: 1 },     // share of shops open at this hour
+  uLamp: { value: 1 },     // street lights on
+};
+
+// Bengaluru's day. Sun, sky and fog colours are linear; skyTop/Mid/Hor are sRGB for the sky dome.
+const NIGHT = { sun: [0.05, 0.06, 0.10], sky: [0.035, 0.045, 0.08], bounce: [0.02, 0.016, 0.013], fog: '#0d1220', top: [0.01, 0.015, 0.04], mid: [0.03, 0.045, 0.09], hor: [0.10, 0.10, 0.14], stars: 1, bloom: 0.5 };
+const DAY_KEYS = [
+  [0, NIGHT],
+  [5.0, NIGHT],
+  [6.0, { sun: [0.45, 0.26, 0.2], sky: [0.08, 0.09, 0.15], bounce: [0.04, 0.03, 0.03], fog: '#3c3a4c', top: [0.08, 0.12, 0.28], mid: [0.30, 0.30, 0.45], hor: [0.92, 0.58, 0.45], stars: 0.25, bloom: 0.4 }],
+  [7.0, { sun: [0.95, 0.65, 0.42], sky: [0.14, 0.17, 0.26], bounce: [0.07, 0.05, 0.04], fog: '#8a8a96', top: [0.18, 0.34, 0.66], mid: [0.48, 0.58, 0.78], hor: [0.95, 0.78, 0.62], stars: 0, bloom: 0.25 }],
+  [9.0, { sun: [1.1, 1.0, 0.86], sky: [0.25, 0.29, 0.37], bounce: [0.15, 0.13, 0.10], fog: '#a6b3c2', top: [0.20, 0.42, 0.80], mid: [0.48, 0.66, 0.90], hor: [0.78, 0.84, 0.90], stars: 0, bloom: 0.15 }],
+  [12.5, { sun: [1.15, 1.1, 1.0], sky: [0.28, 0.32, 0.40], bounce: [0.17, 0.15, 0.12], fog: '#b4c2d1', top: [0.17, 0.40, 0.82], mid: [0.45, 0.65, 0.92], hor: [0.80, 0.87, 0.94], stars: 0, bloom: 0.12 }],
+  [16.0, { sun: [1.1, 0.95, 0.76], sky: [0.24, 0.27, 0.35], bounce: [0.14, 0.11, 0.09], fog: '#aab2bd', top: [0.19, 0.40, 0.78], mid: [0.48, 0.64, 0.88], hor: [0.84, 0.84, 0.86], stars: 0, bloom: 0.15 }],
+  [17.6, { sun: [1.0, 0.68, 0.40], sky: [0.14, 0.15, 0.24], bounce: [0.08, 0.05, 0.04], fog: '#8c7f86', top: [0.18, 0.30, 0.58], mid: [0.50, 0.50, 0.62], hor: [1.0, 0.70, 0.45], stars: 0, bloom: 0.3 }],
+  [18.4, { sun: [0.85, 0.51, 0.31], sky: [0.10, 0.12, 0.185], bounce: [0.044, 0.033, 0.026], fog: '#2a3146', top: [0.035, 0.06, 0.14], mid: [0.16, 0.19, 0.32], hor: [0.62, 0.40, 0.30], stars: 0.6, bloom: 0.45 }],
+  [19.3, { sun: [0.12, 0.10, 0.14], sky: [0.05, 0.06, 0.11], bounce: [0.025, 0.02, 0.018], fog: '#141a2c', top: [0.015, 0.025, 0.07], mid: [0.06, 0.08, 0.16], hor: [0.22, 0.16, 0.20], stars: 0.9, bloom: 0.5 }],
+  [21.0, NIGHT],
+  [24, NIGHT],
+];
+// share of homes with a light on, by hour: up early to cook, out at work, everyone home after 8, asleep by 1
+const OCC_KEYS = [[0, 0.4], [1, 0.22], [3, 0.1], [5, 0.15], [6, 0.42], [7.5, 0.45], [9.5, 0.25], [16, 0.25], [18, 0.6], [19.5, 0.9], [21.5, 1], [23, 0.7], [24, 0.4]];
+// shops: a pharmacy or two all night, shutters up from 9 to 10:30 pm
+const SHOP_KEYS = [[0, 0.06], [6, 0.06], [7.5, 0.3], [9.5, 1], [22, 1], [23, 0.3], [24, 0.06]];
+// traffic: empty roads at 3 am, school and office rush 8 to 10 and 6 to 8 pm
+const TRAFFIC_KEYS = [[0, 0.12], [2, 0.06], [5, 0.1], [6.5, 0.35], [8.5, 1], [10.5, 0.8], [13, 0.65], [16, 0.7], [18, 1], [20.5, 0.85], [22, 0.5], [23.5, 0.22], [24, 0.12]];
+const curve = (keys, h) => { for (let i = 1; i < keys.length; i++) if (h <= keys[i][0]) { const [h0, a] = keys[i - 1], [h1, b] = keys[i]; return a + (b - a) * ((h - h0) / (h1 - h0 || 1)); } return keys[keys.length - 1][1]; };
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const _fa = new THREE.Color(), _fb = new THREE.Color();
+function palette(h) {
+  let i = 1; while (i < DAY_KEYS.length - 1 && h > DAY_KEYS[i][0]) i++;
+  const [h0, a] = DAY_KEYS[i - 1], [h1, b] = DAY_KEYS[i], k = (h - h0) / (h1 - h0 || 1);
+  const mix = (x, y) => x.map((v, j) => v + (y[j] - v) * k);
+  return { sun: mix(a.sun, b.sun), sky: mix(a.sky, b.sky), bounce: mix(a.bounce, b.bounce), top: mix(a.top, b.top), mid: mix(a.mid, b.mid), hor: mix(a.hor, b.hor), stars: a.stars + (b.stars - a.stars) * k, bloom: a.bloom + (b.bloom - a.bloom) * k, fog: _fa.set(a.fog).lerp(_fb.set(b.fog), k) };
+}
 
 // ------------------------------------------------------------------ shared GLSL
 const COMMON = /* glsl */`
   uniform vec3 uFog; uniform float uFogDensity; uniform vec3 uSun; uniform float uTime;
+  uniform vec3 uSunCol; uniform vec3 uSkyCol; uniform vec3 uBounce;
+  uniform float uNight; uniform float uOcc; uniform float uShop; uniform float uLamp;
   float h11(float p){ p = fract(p * .1031); p *= p + 33.33; p *= p + p; return fract(p); }
   float h21(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
   float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mix(mix(h21(i), h21(i+vec2(1,0)), f.x), mix(h21(i+vec2(0,1)), h21(i+vec2(1,1)), f.x), f.y); }
   vec3 lin(vec3 c){ return pow(c, vec3(2.2)); }
   vec3 fogMix(vec3 c, float d){ float f = 1.0 - exp(-uFogDensity * uFogDensity * d * d); return mix(c, uFog, clamp(f, 0., .92)); }
-  // dusk light: low warm sun, cool sky, faint bounce
+  // sun (or moon), sky and ground bounce for the current hour
   vec3 light(vec3 n){
     float sun = max(dot(n, uSun), 0.);
     float sky = .5 + .5 * n.y;
-    return vec3(1.0, .60, .36) * sun * .85 + vec3(.24, .29, .44) * sky * .42 + vec3(.20, .15, .12) * (1. - sky) * .22;
+    return uSunCol * sun + uSkyCol * sky + uBounce * (1. - sky);
   }
 `;
-const sharedUniforms = () => ({ uFog: { value: FOG }, uFogDensity: { value: 0.0011 }, uSun: { value: SUN }, uTime: { value: 0 } });
+const sharedUniforms = () => ({ ...ENV, uTime: { value: 0 } });
 
 // ------------------------------------------------------------------ buildings
 const buildingMat = () => new THREE.ShaderMaterial({
   side: THREE.DoubleSide,
-  uniforms: { ...sharedUniforms(), uRise: { value: 0 }, uLights: { value: 1 } },
+  uniforms: { ...sharedUniforms(), uRise: { value: 0 } },
   vertexShader: /* glsl */`
     attribute vec2 aWall;   // u along the wall (m), v height (m)
     attribute vec4 aB;      // type, floors, occupancy, colour index
@@ -56,7 +101,6 @@ const buildingMat = () => new THREE.ShaderMaterial({
     }`,
   fragmentShader: /* glsl */`
     ${COMMON}
-    uniform float uLights;
     varying vec3 vN; varying vec3 vW; varying vec2 vWall; varying vec4 vB; varying vec4 vM; varying float vDist; varying float vH;
 
     vec3 housePaint(float i){
@@ -136,19 +180,30 @@ const buildingMat = () => new THREE.ShaderMaterial({
 
         // window glass and room lights
         float r1 = h21(vec2(bid, fl) + seed * 31.7), r2 = h21(vec2(fl, bid) * 1.3 + seed * 9.1);
-        float lit = step(r1, occ) * uLights;
+        float glow = mix(.1, 1., uNight);                                     // lit rooms barely show in daylight
+        float lit = step(r1, occ * uOcc) * glow;
         lit *= step(.03, fract(r2 * 11. + uTime * .015 * step(.95, r2)));     // a few rooms switch on and off
-        vec3 tube = vec3(.80,.90,1.0) * 1.9, bulb = vec3(1.0,.70,.38) * 1.6, tv = vec3(.45,.6,1.) * 1.3;
-        vec3 room = r2 < .42 ? tube : r2 < .66 ? vec3(1.,.95,.86) * 1.7 : r2 < .84 ? bulb : r2 < .91 ? tv : r2 < .955 ? vec3(.35,1.,.65) * 1.2 : vec3(1.,.4,.85) * 1.2; // tube lights, LED, bulbs, TVs, coloured LED strips
-        if (type > 2.5 && type < 3.5 || type > 6.5) room = vec3(.85,.92,1.) * 1.4;
+        // Each household has its own kind of light (yellow bulbs, warm LED, neutral LED or tube lights) and most
+        // of its rooms use it; the rest is a mix of other bulbs, TVs, night lamps and coloured LED strips.
+        float bt = h11(seed * 57.1 + fl * .37);
+        vec3 bulb = vec3(1.,.56,.24), warm = vec3(1.,.74,.45), neutral = vec3(1.,.88,.70), tube = vec3(.76,.87,1.);
+        vec3 own = bt < .3 ? bulb : bt < .58 ? warm : bt < .78 ? neutral : tube;
+        float r3 = h21(vec2(bid * 1.7, fl * 2.3) + seed * 4.3);
+        vec3 room = r3 < .58 ? own : r3 < .68 ? bulb : r3 < .76 ? tube : r3 < .82 ? warm
+          : r3 < .89 ? vec3(.32,.48,1.) * (.65 + .35 * sin(uTime * 6. + bid * 3. + fl))    // TV glow, flickering
+          : r3 < .93 ? vec3(1.,.42,.12) * .55                                                  // dim night lamp / diya
+          : r3 < .955 ? vec3(1.,.32,.72) : r3 < .98 ? vec3(.62,.38,1.) : vec3(.32,1.,.55);     // pink, purple, green LED strips
+        room *= 1.25;
+        if (type > 2.5 && type < 3.5 || type > 6.5) { room = mix(vec3(.82,.9,1.), vec3(1.,.9,.75), step(.6, h11(seed * 13.))) * 1.3; own = room / 1.3; }
         vec3 glass = type > 2.5 && type < 3.5 ? lin(vec3(.20,.28,.36)) * (l * .6 + .15) : lin(vec3(.10,.11,.13)) * l;
+        glass += uSkyCol * .35;                                                // sky reflected in the glass by day
         float glassMix = max(win, balcRecess * step(1.5, fy) * .0);
         col = mix(col, glass, glassMix);
         float lw = win + balcRecess * .25;
-        vec3 near = room * lit * lw * (.55 + r2 * .7);
+        vec3 near = room * lit * lw * (.55 + r2 * .6);
         float px = fwidth(bu) + fwidth(y / fh);
         float far = smoothstep(.18, .7, px);
-        vec3 avgRoom = mix(tube, bulb, .4) * occ * uLights * .2;
+        vec3 avgRoom = own * 1.25 * occ * uOcc * glow * .2;                    // seen from far: the household's tone
         col = mix(col, mix(col, glass, .22), far);
         emit += mix(near, avgRoom * (type < 2.5 ? 1. : .7), far);
         // curtains: some lit windows only glow softly
@@ -159,30 +214,31 @@ const buildingMat = () => new THREE.ShaderMaterial({
           float sy = y;
           float bayS = 4.2, sid = floor(u / bayS), sx = fract(u / bayS);
           float rs = h21(vec2(sid, seed * 17.));
-          float open = step(.28, rs);
+          float open = step(1. - .72 * uShop, rs);                              // late at night only a few stay open
+          float sglow = mix(.25, 1., uNight);
           vec3 shutter = lin(vec3(.45,.46,.47)) * l * (.85 + .15 * step(.5, fract(sy * 6.)));
           vec3 front = lin(rs < .5 ? vec3(.92,.96,1.) : rs < .8 ? vec3(1.,.88,.70) : vec3(1.,.97,.92)) * .7 * (.55 + rs * .5);
           float inFront = step(.06, sx) * step(sx, .94) * step(.15, sy) * step(sy, 2.75);
           col = mix(col, open > .5 ? lin(vec3(.25,.22,.18)) : shutter, inFront);
-          emit += front * inFront * open * uLights;
+          emit += front * inFront * open * sglow;
           // signboard band
           float board = step(2.9, sy) * step(sy, 3.75) * step(.03, sx) * step(sx, .97);
           vec3 sc = signColour(h21(vec2(sid * 3.1, seed)));
           float glyph = step(.45, vnoise(vec2(u * 3.2, sy * 5.) + sid * 9.)) * step(3.05, sy) * step(sy, 3.6) * step(.1, sx) * step(sx, .9);
           vec3 boardCol = mix(lin(sc) * .9, vec3(1.), glyph * .8);
-          col = mix(col, boardCol * .25, board);
-          emit += boardCol * board * (.8 + rs * .8) * uLights * step(.18, rs);
+          col = mix(col, boardCol * mix(l * 1.1, vec3(.25), uNight), board);   // painted board by day, backlit at night
+          emit += boardCol * board * (.8 + rs * .8) * uNight * step(.18, rs) * mix(.3, 1., open);
         }
         // malls: full-height glass bands and a lit brand strip at the top
         if (type > 6.5) {
           float band = step(.6, fy) * step(fy, fh - .5);
           col = mix(col, lin(vec3(.12,.18,.24)) * l + vec3(.02,.03,.04), band);
-          emit += vec3(.8,.9,1.) * band * (.35 + .4 * h21(vec2(floor(u / 6.), fl) + seed)) * uLights;
+          emit += vec3(.8,.9,1.) * band * (.35 + .4 * h21(vec2(floor(u / 6.), fl) + seed)) * mix(.15, 1., uNight) * mix(.2, 1., uShop);
           float strip = step(vH - 1.6, y) * step(y, vH - .4);
-          emit += mix(vec3(1.,.2,.3), vec3(.2,.6,1.), step(.5, seed)) * strip * 2.2 * uLights;
+          emit += mix(vec3(1.,.2,.3), vec3(.2,.6,1.), step(.5, seed)) * strip * 2.2 * uNight;
         }
         // temples: warm lamps on the walls
-        if (type > 5.5) emit += vec3(1.,.55,.2) * step(.8, h21(floor(vec2(u * .8, y * .8)) + seed)) * .8 * uLights;
+        if (type > 5.5) emit += vec3(1.,.55,.2) * step(.8, h21(floor(vec2(u * .8, y * .8)) + seed)) * .8 * uNight;
         // contact shadow at the base
         col *= .55 + .45 * smoothstep(0., 2.2, y);
       } else {
@@ -230,7 +286,7 @@ const zoneMat = () => new THREE.ShaderMaterial({
       else if (vZ < 4.5) c = lin(mix(vec3(.55,.40,.27), vec3(.45,.33,.24), n2));        // construction dirt
       else if (vZ < 5.5) {                                                               // water
         float s = sin(vW.x * .09 + uTime * .6) * sin(vW.z * .12 - uTime * .4);
-        c = lin(vec3(.10,.20,.28)) + lin(vec3(1.,.55,.32)) * pow(max(s,0.), 8.) * .25;
+        c = lin(vec3(.10,.20,.28)) * (uSkyCol * 2.2 + .15) + uSunCol * pow(max(s,0.), 8.) * .3;
         gl_FragColor = vec4(fogMix(c, vDist), 1.); return;
       }
       else if (vZ < 6.5) c = lin(vec3(.62,.55,.42));                                    // temple grounds
@@ -278,7 +334,7 @@ const poolMat = () => new THREE.ShaderMaterial({
   uniforms: sharedUniforms(),
   vertexShader: 'attribute vec3 aCol; varying vec3 vC; varying vec2 vUv; varying float vDist; void main(){ vUv = uv; vC = aCol; vec4 mv = viewMatrix * modelMatrix * instanceMatrix * vec4(position,1.); vDist = -mv.z; gl_Position = projectionMatrix * mv; }',
   fragmentShader: `${COMMON} varying vec3 vC; varying vec2 vUv; varying float vDist;
-    void main(){ float d = length(vUv - .5) * 2.; float a = pow(max(1. - d, 0.), 2.2); float f = exp(-uFogDensity * uFogDensity * vDist * vDist); gl_FragColor = vec4(vC * a * .32 * f, 1.); }`,
+    void main(){ float d = length(vUv - .5) * 2.; float a = pow(max(1. - d, 0.), 2.2); float f = exp(-uFogDensity * uFogDensity * vDist * vDist); gl_FragColor = vec4(vC * a * .32 * f * uLamp * uNight, 1.); }`,
 });
 
 // ------------------------------------------------------------------ city
@@ -294,6 +350,9 @@ export class City {
     this.scene.background = FOG.clone();
     // same falloff as fogMix() in the custom shaders, so tanks, trees and cars fade with the buildings
     this.scene.fog = new THREE.FogExp2(FOG.clone(), 0.0011);
+    // time of day: 'live' follows the clock, 'manual' holds an hour, 'play' runs a day in a minute
+    this.tod = { mode: 'live', hour: clockHour(), dayLength: 60 };
+    this.dens = 1;
     this.camera = new THREE.PerspectiveCamera(38, 1, 2, 9000);
     this.camera.position.set(0, 1400, 1600);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -328,20 +387,22 @@ export class City {
 
   sky() {
     const m = new THREE.ShaderMaterial({
-      side: THREE.BackSide, depthWrite: false, uniforms: { uSun: { value: SUN } },
+      side: THREE.BackSide, depthWrite: false,
+      uniforms: { uSun: ENV.uSun, uNight: ENV.uNight, uTop: { value: new THREE.Vector3() }, uMid: { value: new THREE.Vector3() }, uHor: { value: new THREE.Vector3() }, uGlowCol: { value: new THREE.Vector3(1, 0.5, 0.25) }, uStars: { value: 0.6 } },
       vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
-      fragmentShader: `uniform vec3 uSun; varying vec3 vP;
+      fragmentShader: `uniform vec3 uSun; uniform float uNight; uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uHor; uniform vec3 uGlowCol; uniform float uStars; varying vec3 vP;
         float h21(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
         void main(){
           float y = vP.y; float s = max(dot(vP, uSun), 0.);
-          vec3 top = vec3(.035,.06,.14), mid = vec3(.16,.19,.32), hor = vec3(.62,.40,.30);
-          vec3 c = mix(mid, top, smoothstep(.05, .6, y));
-          c = mix(c, hor, exp(-max(y, 0.) * 7.) * (.55 + .45 * s));
-          c += vec3(1., .5, .25) * pow(s, 18.) * .9 + vec3(1., .6, .3) * pow(s, 4.) * .18;
+          vec3 c = mix(uMid, uTop, smoothstep(.05, .6, y));
+          c = mix(c, uHor, exp(-max(y, 0.) * 7.) * (.55 + .45 * s));
+          // sun disc and halo by day, a faint moon glow at night
+          c += uGlowCol * (pow(s, 18.) * .9 + pow(s, 4.) * .18) * (1. - uNight * .75) + vec3(.9,.95,1.) * pow(s, 900.) * uNight * 1.5;
           float st = step(.9982, h21(floor(vP.xz / max(y, .05) * 170.))) * smoothstep(.35, .7, y);
-          c += vec3(.85,.9,1.) * st * .5;
+          c += vec3(.85,.9,1.) * st * .5 * uStars;
           gl_FragColor = vec4(pow(c, vec3(2.2)), 1.); }`,
     });
+    this.skyMat = m;
     this.scene.add(new THREE.Mesh(new THREE.SphereGeometry(6000, 32, 16), m));
     const ground = new THREE.Mesh(new THREE.CircleGeometry(5200, 64), groundMat());
     ground.rotation.x = -Math.PI / 2; ground.position.y = -0.05; this.scene.add(ground); this.mats.push(ground.material);
@@ -618,9 +679,46 @@ export class City {
   }
   duskLights() {
     const g = new THREE.Group();
-    const sun = new THREE.DirectionalLight(new THREE.Color(1, 0.62, 0.38), 0.9); sun.position.copy(SUN).multiplyScalar(100);
-    g.add(sun, new THREE.HemisphereLight(new THREE.Color(0.30, 0.36, 0.55), new THREE.Color(0.20, 0.15, 0.12), 0.55));
+    this.sunLight = new THREE.DirectionalLight(new THREE.Color(1, 0.62, 0.38), 1); this.sunLight.position.copy(SUN).multiplyScalar(100);
+    this.hemi = new THREE.HemisphereLight(new THREE.Color(0.30, 0.36, 0.55), new THREE.Color(0.20, 0.15, 0.12), 1);
+    g.add(this.sunLight, this.hemi);
     return g;
+  }
+
+  // ---------- time of day ----------
+  setHour(h) { this.tod.mode = 'manual'; this.tod.hour = ((h % 24) + 24) % 24; }
+  setLive() { this.tod.mode = 'live'; this.tod.hour = clockHour(); }
+  playDay(seconds = 60) { this.tod.mode = 'play'; this.tod.dayLength = seconds; }
+  get hour() { return this.tod.hour; }
+
+  applyTime(h) {
+    const p = palette(h);
+    const day = smooth(5.3, 7.0, h) * (1 - smooth(17.4, 19.3, h)), night = 1 - day;
+    // the sun rises in the east (+x), passes high and a little south (+z) at noon, sets in the west;
+    // after dark the light comes from the moon instead
+    const ph = (h - 6.1) / 12.3;
+    const sun = new THREE.Vector3(Math.cos(ph * Math.PI), Math.max(Math.sin(ph * Math.PI), 0.18), 0.3).normalize();
+    const moonK = Math.min(1, 1 - smooth(4.8, 6.0, h) + smooth(18.8, 19.8, h));
+    SUN.copy(sun.lerp(new THREE.Vector3(0.35, 0.75, -0.3).normalize(), moonK)).normalize();
+    ENV.uSunCol.value.set(...p.sun); ENV.uSkyCol.value.set(...p.sky); ENV.uBounce.value.set(...p.bounce);
+    ENV.uNight.value = night;
+    ENV.uOcc.value = curve(OCC_KEYS, h);
+    ENV.uShop.value = curve(SHOP_KEYS, h);
+    ENV.uLamp.value = smooth(0.35, 0.6, night);
+    FOG.copy(p.fog); this.scene.background.copy(FOG); this.scene.fog.color.copy(FOG);
+    if (this.skyMat) {
+      const u = this.skyMat.uniforms, m = Math.max(...p.sun, 0.001);
+      u.uTop.value.set(...p.top); u.uMid.value.set(...p.mid); u.uHor.value.set(...p.hor);
+      u.uGlowCol.value.set(p.sun[0] / m, p.sun[1] / m * 0.85, p.sun[2] / m * 0.7); u.uStars.value = p.stars;
+    }
+    // the plain three.js materials (trees, tanks, cars, roofs) get the same light through these two
+    if (this.sunLight) { this.sunLight.color.setRGB(p.sun[0] * 1.06, p.sun[1] * 1.06, p.sun[2] * 1.06); this.sunLight.position.copy(SUN).multiplyScalar(100); }
+    if (this.hemi) { this.hemi.color.setRGB(p.sky[0] * 1.63, p.sky[1] * 1.63, p.sky[2] * 1.63); this.hemi.groundColor.setRGB(p.bounce[0] * 2.5, p.bounce[1] * 2.5, p.bounce[2] * 2.5); }
+    this.bloom.strength = p.bloom; this.bloom.threshold = 1.05 + 0.35 * day;
+    if (this.lampHeads) this.lampHeads.material.opacity = ENV.uLamp.value;
+    if (this.carLights) this.carLights.material.opacity = 0.15 + 0.85 * night;
+    if (this.festivePts) this.festivePts.material.opacity = 0.1 + 0.9 * night;
+    this.dens = curve(TRAFFIC_KEYS, h);
   }
 
   // street lamps: positions from the map, plus regular spacing along the roads the map hasn't covered
@@ -660,7 +758,8 @@ export class City {
     const hg = new THREE.BufferGeometry();
     hg.setAttribute('position', new THREE.Float32BufferAttribute(heads, 3));
     hg.setAttribute('color', new THREE.Float32BufferAttribute(headCol, 3));
-    this.world.add(new THREE.Points(hg, new THREE.PointsMaterial({ size: 2.2, vertexColors: true, map: glowTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+    this.lampHeads = new THREE.Points(hg, new THREE.PointsMaterial({ size: 2.2, vertexColors: true, map: glowTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.world.add(this.lampHeads);
   }
 
   trees(city) {
@@ -737,7 +836,7 @@ export class City {
       for (let c = 0; c < count; c++) for (const dir of r.oneway ? [1] : [1, -1]) {
         const roll = Math.random();
         const k = r.rank <= 1 ? (roll < 0.75 ? 2 : 0) : r.rank >= 4 && roll < 0.05 ? 3 : roll < 0.42 ? 2 : roll < 0.62 ? 1 : 0;
-        lanes.push({ r, cum, d: Math.random() * r.len, v: (r.rank >= 4 ? 9 : r.rank >= 2 ? 7 : 5) + Math.random() * 4, dir, off: (r.w * (r.oneway ? 0.1 : 0.24) + (k === 2 ? 0.8 : 0)) * dir * (Math.random() < 0.5 ? 1 : 0.7), k });
+        lanes.push({ r, cum, q: Math.random(), d: Math.random() * r.len, v: (r.rank >= 4 ? 9 : r.rank >= 2 ? 7 : 5) + Math.random() * 4, dir, off: (r.w * (r.oneway ? 0.1 : 0.24) + (k === 2 ? 0.8 : 0)) * dir * (Math.random() < 0.5 ? 1 : 0.7), k });
       }
     }
     this.cars = lanes.slice(0, 2400);
@@ -762,8 +861,15 @@ export class City {
   stepTraffic(dt) {
     if (!this.cars) return;
     const lp = this.carLights.geometry.attributes.position.array, m4 = this._m4, q = this._q, v3 = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+    // how many vehicles are out depends on the hour; at rush hour the busy roads also crawl
+    const dens = this.dens, crawl = 1 - 0.5 * smooth(0.75, 1, dens), zero = new THREE.Vector3(0, 0, 0);
     this.cars.forEach((c, i) => {
-      c.d = (c.d + c.v * dt * c.dir + c.r.len) % c.r.len;
+      if (c.q > dens) {
+        m4.compose(v3.set(0, -50, 0), q, zero); this.vehMeshes[c.k].setMatrixAt(c.idx, m4);
+        lp[i * 6 + 1] = lp[i * 6 + 4] = -50; return;
+      }
+      const v = c.r.rank >= 3 ? c.v * crawl : c.v;
+      c.d = (c.d + v * dt * c.dir + c.r.len) % c.r.len;
       const cum = c.cum; let lo = 0, hi = cum.length - 1;
       while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= c.d) lo = mid; else hi = mid; }
       const p0 = c.r.pts[lo], p1 = c.r.pts[hi], seg = cum[hi] - cum[lo] || 1, t = (c.d - cum[lo]) / seg;
@@ -847,6 +953,9 @@ export class City {
 
   frame() {
     const dt = Math.min(this.clock.getDelta(), 0.05), t = this.clock.getElapsedTime();
+    if (this.tod.mode === 'live') this.tod.hour = clockHour();
+    else if (this.tod.mode === 'play') this.tod.hour = (this.tod.hour + (dt * 24) / this.tod.dayLength) % 24;
+    this.applyTime(this.tod.hour);
     for (const m of this.mats) if (m.uniforms?.uTime) m.uniforms.uTime.value = t;
     if (this.bmat && this.rise0 != null) this.bmat.uniforms.uRise.value = t - this.rise0;
     this.stepTraffic(dt);
@@ -878,6 +987,8 @@ export class City {
     this.onFrame.forEach((f) => f(t));
   }
 }
+
+function clockHour() { const d = new Date(); return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600; }
 
 let _glow;
 function glowTex() {
