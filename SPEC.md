@@ -67,8 +67,8 @@ Trial accounts can only place outbound calls to verified numbers. That is enough
 | Storage | JSON files in `data/` (git-ignored). No database |
 | Voice and calls | Bolna. Two agents: `calibrate` and `guide`. Created and updated by a setup script through the Bolna API; if tool setup fails through the API, set tools in the Bolna dashboard and document the steps |
 | Calls mode | Outbound calls to verified numbers (trial accounts allow this). Bolna web call is the backup. Inbound only if Bolna provides a number |
-| Speech-to-text | Sarvam `saaras:v3` through Bolna (Hinglish) |
-| Text-to-speech | Sarvam Bulbul through Bolna, a young male or female Hindi voice that sounds natural on a phone line |
+| Speech-to-text | ElevenLabs Scribe `scribe_v2_realtime` through Bolna, language `hi` (handles Hinglish). Builder's choice for accuracy; on the flat-rate list |
+| Text-to-speech | Cartesia `sonic-3`, voice Varun (male Hindi, imported into Bolna by ID `4cd9f881-58f7-4969-876a-00983214c362`) |
 | Agent LLM | The fastest LLM on Bolna's preferred (flat-rate) list |
 | Language | Hinglish: Hindi and English mixed, following the caller |
 | Map data | Google Maps Platform only: Geocoding with Address Descriptors (landmarks, built for India), Places Nearby and Text Search, Routes (two-wheeler). One provider, so there is never a choice of which to call |

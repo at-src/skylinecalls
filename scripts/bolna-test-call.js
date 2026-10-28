@@ -31,7 +31,7 @@ const agent = {
           llm_config: { provider: 'openai', family: 'openai', model: 'gpt-4.1-mini', temperature: 0.4, max_tokens: 80, agent_flow_type: 'streaming' },
         },
         synthesizer: { stream: true, provider: 'cartesia', buffer_size: 150, audio_format: 'wav', provider_config: { model: 'sonic-3', voice: 'Varun', voice_id: VARUN, language: 'hi' } },
-        transcriber: { provider: 'deepgram', model: 'nova-3', language: 'hi', stream: true, encoding: 'linear16', sampling_rate: 16000, endpointing: 200 },
+        transcriber: { provider: 'elevenlabs', model: 'scribe_v2_realtime', language: 'hi', stream: true, encoding: 'linear16', sampling_rate: 16000, endpointing: 200 },
       },
     }],
   },
