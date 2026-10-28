@@ -106,7 +106,17 @@ check('approved -> new visit, guidance allowed', r.approved === true && r.visit_
 r = await tool('next_instruction', { visit_id: r.visit_id, seen: 'Punjab National Bank ke saamne' });
 check('PNB next to the gate counts as the anchor', /Next step \(1 of 4\)/.test(r.say), say(r));
 
-console.log('\n== 11. Tool endpoint is protected');
+console.log('\n== 11. Rider location shared on Telegram (live location)');
+const { handleLocation } = await import('../src/telegram.js');
+handleText('order with Swiggy');
+const sw = (await (await fetch(base + '/api/state')).json()).visits.find((v) => v.service === 'swiggy');
+let m = handleLocation({ latitude: 12.9124, longitude: 77.6375, live_period: 900 }, true);
+check('first live location acknowledged', /live location/i.test(m || ''), m);
+check('later live updates are silent', handleLocation({ latitude: 12.91235, longitude: 77.6376 }, true) === null);
+r = await tool('rider_status', { visit_id: sw.id });
+check('agent sees the Telegram position (near the door path)', r.zone === 'near', `${r.distance_to_anchor_m} m from anchor`);
+
+console.log('\n== 12. Tool endpoint is protected');
 const unauth = await fetch(`${base}/tools/next_instruction`, { method: 'POST', body: '{}' });
 check('request without the token is rejected', unauth.status === 401);
 

@@ -6,6 +6,7 @@ import { env } from './env.js';
 import { emit } from './store.js';
 import { createVisit, activeVisits, detectService, closeVisit } from './visits.js';
 import { resolveApproval } from './notify.js';
+import { setPosition, getRider } from './rider.js';
 
 const api = (m, body) => fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${m}`, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -39,6 +40,20 @@ export function handleText(text) {
   return 'Tell me who is coming, e.g. "order with Swiggy" or "booked a Rapido". Send "status" to see who\'s expected.';
 }
 
+// A location (one pin or Telegram live location) becomes the rider's position for the latest active visit.
+// Live location keeps arriving as edited messages every few seconds.
+const tracking = new Set();
+export function handleLocation(loc, live = false) {
+  const v = activeVisits().pop();
+  if (!v) return 'Nobody is expected right now. Tell me who is coming first, e.g. "order with Zepto".';
+  setPosition(v.id, { lat: loc.latitude, lng: loc.longitude }, live ? 'telegram-live' : 'telegram-pin');
+  if (tracking.has(v.id)) return null; // don't reply to every live update
+  tracking.add(v.id);
+  return live
+    ? `📍 Got live location for the ${cap(v.service)} rider. I'll track it until the delivery is done.`
+    : `📍 Got the ${cap(v.service)} rider's position. Send a live location to keep it updating.`;
+}
+
 let offset = 0, running = false;
 export async function startTelegram() {
   if (running || !env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
@@ -47,11 +62,17 @@ export async function startTelegram() {
   try { const u = await api('getUpdates', { offset: -1 }); offset = u.result?.length ? u.result[0].update_id + 1 : 0; } catch {}
   while (running) {
     try {
-      const u = await api('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query'] });
+      const u = await api('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'edited_message', 'callback_query'] });
       for (const up of u.result || []) {
         offset = up.update_id + 1;
-        const chat = String(up.message?.chat?.id || up.callback_query?.message?.chat?.id || '');
+        const msg = up.message || up.edited_message;
+        const chat = String(msg?.chat?.id || up.callback_query?.message?.chat?.id || '');
         if (chat !== String(env.TELEGRAM_CHAT_ID)) continue; // only the customer
+        if (msg?.location) {
+          const out = handleLocation(msg.location, !!msg.location.live_period || !!up.edited_message);
+          if (out) await say(out);
+          continue;
+        }
         if (up.message?.text) {
           emit('telegram.in', { text: up.message.text });
           await say(handleText(up.message.text));
