@@ -98,6 +98,26 @@ const routes = {
   'POST /api/rider/advance': async (b) => advance(b.visit_id, Number(b.metres || 50)),
   'GET /api/rider': async (b, q) => getRider(q.get('visit_id')),
   'POST /api/approvals/resolve': async (b) => resolveApproval(b.approval_id, b.status),
+  // demo: start a delivery with a simulated rider ~1.8 km away who takes a wrong turn
+  'POST /api/demo/start': async (b) => {
+    const v = createVisit({ service: detectService(b.service) || 'zepto', source: 'demo' });
+    await planRide(v.id, { from: { lat: 12.9231, lng: 77.6510 }, via: b.wrong_turn === false ? null : { lat: 12.9205, lng: 77.6455 }, door_id: v.door_id });
+    if (b.ride !== false) startSim(v.id, Number(b.speed || 8));
+    return { visit_id: v.id, code: v.code };
+  },
+  // the rider's "Call customer" button: connects the rider to the guide agent
+  'POST /api/call-rider': async (b) => {
+    const v = getVisit(b.visit_id);
+    if (!v || v.status !== 'active') return { ok: false, error: 'no active visit' };
+    if (env.ALLOW_CALLS !== '1') return { ok: false, error: 'calls disabled (set ALLOW_CALLS=1)' };
+    const r = await fetch('https://api.bolna.ai/call', {
+      method: 'POST', headers: { Authorization: `Bearer ${env.BOLNA_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: env.BOLNA_GUIDE_AGENT_ID, recipient_phone_number: env.RIDER_PHONE, user_data: { visit_id: v.id, customer_name: getDoor(v.door_id).customer.name } }),
+    });
+    const j = await r.json();
+    emit('call.started', { visit: v.id, execution: j.execution_id, ok: r.ok });
+    return { ok: r.ok, execution_id: j.execution_id };
+  },
   'POST /bolna/webhook': async (b) => { emit('bolna.event', { status: b.status, execution: b.id || b.execution_id, transcript: (b.transcript || '').slice(-600) }); return { ok: true }; },
 };
 

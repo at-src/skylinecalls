@@ -44,6 +44,10 @@ const vars = {
   GCP_PROJECT: 'your-gcp-project',
   PORT: '3200',
   PUBLIC_URL: old.PUBLIC_URL || '',
+  // shared secret Bolna sends to our tool endpoints
+  TOOL_TOKEN: old.TOOL_TOKEN || (await import('node:crypto')).randomBytes(18).toString('hex'),
+  BOLNA_TEST_AGENT_ID: old.BOLNA_TEST_AGENT_ID || '',
+  BOLNA_ALERT_AGENT_ID: old.BOLNA_ALERT_AGENT_ID || '',
 };
 
 writeFileSync('.env', Object.entries(vars).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
