@@ -1,0 +1,14 @@
+{
+  "name": "tothedoor",
+  "version": "0.1.0",
+  "description": "Voice agent that guides delivery riders and drivers the last few metres to your door.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "keys": "node scripts/keys.js",
+    "start": "node src/server.js",
+    "test:maps": "node scripts/test-maps.js"
+  },
+  "engines": { "node": ">=22" },
+  "license": "MIT"
+}
