@@ -1,0 +1,152 @@
+// ToTheDoor server: Bolna tool endpoints, Telegram bot, rider position/simulator, live event feed.
+// Plain node:http, no dependencies.
+import { createServer } from 'node:http';
+import { readFileSync, existsSync } from 'node:fs';
+import { env } from './env.js';
+import { emit, bus, recentEvents } from './store.js';
+import { createVisit, activeVisits, detectService, getVisit, closeVisit } from './visits.js';
+import { getDoor, defaultDoorId } from './doors.js';
+import { verify, status, next, outcome, visitOf } from './guide.js';
+import { requestApproval, waitApproval, getApproval, resolveApproval, ringCustomer, notify } from './notify.js';
+import { setPosition, planRide, startSim, stopSim, getRider, advance } from './rider.js';
+import { startTelegram } from './telegram.js';
+
+const PORT = Number(env.PORT || 3200);
+const TOKEN = env.TOOL_TOKEN || '';
+
+const json = (res, code, body) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+const readBody = (req) => new Promise((ok) => {
+  let d = ''; req.on('data', (c) => (d += c)); req.on('end', () => {
+    if (!d) return ok({});
+    try { ok(JSON.parse(d)); } catch { ok(Object.fromEntries(new URLSearchParams(d))); }
+  });
+});
+// Bolna leaves a placeholder like "%(seen)s" or "{visit_id}" when a value wasn't filled
+const val = (x) => (x == null || /^%\(.*\)s$|^\{.*\}$|^(null|none|undefined)$/i.test(String(x).trim()) ? '' : String(x).trim());
+
+// ---------- agent tools ----------
+// Every tool answers with { say: "...facts for the agent..." } so the agent can speak naturally.
+const TOOLS = {
+  async verify_caller(a) {
+    return verify({ visit_id: val(a.visit_id), service: val(a.service), code: val(a.code), caller_number: val(a.caller_number) });
+  },
+
+  // caller couldn't be verified: ask the customer live on Telegram, wait a little
+  async ask_customer(a) {
+    const who = val(a.caller_says) || 'a delivery person';
+    const ap = requestApproval(who);
+    const res = await waitApproval(ap.id, Number(env.APPROVAL_WAIT_MS || 15000));
+    if (res.status === 'allowed') {
+      const v = createVisit({ service: detectService(who) || 'delivery', source: 'approved live' });
+      return { approved: true, visit_id: v.id, say: 'The family approved this caller. You can guide him now. Ask where he is and call next_instruction with visit_id ' + v.id + '.' };
+    }
+    if (res.status === 'blocked') return { approved: false, say: 'The family does not know this caller. Politely say you can\'t share the address and end the call. Give no directions.' };
+    return { approved: false, pending: true, approval_id: ap.id, say: 'No answer from the family yet. Tell him to hold on a few seconds, then call check_approval with approval_id ' + ap.id + '. Give no directions meanwhile.' };
+  },
+
+  async check_approval(a) {
+    const ap = getApproval(val(a.approval_id));
+    if (!ap) return { say: 'Unknown approval. Do not give directions. Ask him to call again later.' };
+    const res = ap.status === 'pending' ? await waitApproval(ap.id, 10000) : ap;
+    if (res.status === 'allowed') {
+      const v = createVisit({ service: detectService(ap.caller) || 'delivery', source: 'approved live' });
+      return { approved: true, visit_id: v.id, say: 'Approved. Ask where he is and call next_instruction with visit_id ' + v.id + '.' };
+    }
+    if (res.status === 'blocked') return { approved: false, say: 'Not approved. Say you can\'t share the address and end the call politely.' };
+    return { approved: false, say: 'Still no answer from the family. Tell him the family will call him back, then end the call. Give no directions.' };
+  },
+
+  async next_instruction(a) {
+    const v = visitOf(val(a.visit_id));
+    if (!v || v.status !== 'active') return { say: 'Caller is not verified. Call verify_caller first. Give no directions.' };
+    return next(v, val(a.seen));
+  },
+
+  async rider_status(a) {
+    const v = visitOf(val(a.visit_id));
+    if (!v || v.status !== 'active') return { say: 'Caller is not verified. Give no directions.' };
+    return status(v);
+  },
+
+  async call_customer(a) {
+    const v = visitOf(val(a.visit_id));
+    if (!v) return { say: 'Caller is not verified.' };
+    const reason = val(a.reason) || 'needs you';
+    await ringCustomer(`Your ${v.service.charAt(0).toUpperCase() + v.service.slice(1)} rider ${reason}. He's at your place now.`);
+    const door = getDoor(v.door_id);
+    return { say: `The family has been called and messaged. Ask him to wait two minutes. If nobody comes: ${door.fallback.if_no_answer}` };
+  },
+
+  async log_outcome(a) {
+    const v = visitOf(val(a.visit_id));
+    if (!v) return { say: 'OK.' };
+    return outcome(v, val(a.result) || 'delivered', val(a.note));
+  },
+};
+
+// ---------- http ----------
+const routes = {
+  'GET /health': () => ({ ok: true }),
+  'GET /api/state': () => ({ visits: activeVisits(), door: getDoor(defaultDoorId()), events: recentEvents().slice(-100) }),
+  'GET /api/door': () => getDoor(defaultDoorId()),
+  'POST /api/visits': async (b) => createVisit({ service: detectService(b.service) || b.service || 'delivery', rider_phone: b.rider_phone || null, source: 'api' }),
+  'POST /api/visits/close': async (b) => closeVisit(b.visit_id, b.status || 'closed', b.note || ''),
+  'POST /api/rider/position': async (b) => setPosition(b.visit_id, { lat: Number(b.lat), lng: Number(b.lng) }, 'gps'),
+  'POST /api/rider/plan': async (b) => { const r = await planRide(b.visit_id, { from: b.from, via: b.via, door_id: getVisit(b.visit_id)?.door_id }); return { points: r.path.length }; },
+  'POST /api/rider/start': async (b) => { startSim(b.visit_id, Number(b.speed || 8)); return { ok: true }; },
+  'POST /api/rider/stop': async (b) => { stopSim(b.visit_id); return { ok: true }; },
+  'POST /api/rider/advance': async (b) => advance(b.visit_id, Number(b.metres || 50)),
+  'GET /api/rider': async (b, q) => getRider(q.get('visit_id')),
+  'POST /api/approvals/resolve': async (b) => resolveApproval(b.approval_id, b.status),
+  'POST /bolna/webhook': async (b) => { emit('bolna.event', { status: b.status, execution: b.id || b.execution_id, transcript: (b.transcript || '').slice(-600) }); return { ok: true }; },
+};
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url, 'http://x');
+  try {
+    // tools: POST /tools/<name>, protected by the shared token Bolna sends
+    const tm = url.pathname.match(/^\/tools\/([a-z_]+)$/);
+    if (tm && req.method === 'POST') {
+      if (TOKEN && req.headers.authorization !== `Bearer ${TOKEN}`) return json(res, 401, { say: 'unauthorized' });
+      const fn = TOOLS[tm[1]];
+      if (!fn) return json(res, 404, { say: 'unknown tool' });
+      const args = { ...Object.fromEntries(url.searchParams), ...(await readBody(req)) };
+      emit('tool.call', { tool: tm[1], args });
+      const out = await fn(args);
+      emit('tool.result', { tool: tm[1], out });
+      return json(res, 200, out);
+    }
+    // live event stream for the screen
+    if (url.pathname === '/api/events' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+      const send = (e) => res.write(`data: ${JSON.stringify(e)}\n\n`);
+      recentEvents().slice(-50).forEach(send);
+      bus.on('event', send);
+      req.on('close', () => bus.off('event', send));
+      return;
+    }
+    const h = routes[`${req.method} ${url.pathname}`];
+    if (h) return json(res, 200, (await h(req.method === 'POST' ? await readBody(req) : {}, url.searchParams)) ?? null);
+    // static files from public/
+    const f = 'public' + (url.pathname === '/' ? '/index.html' : url.pathname);
+    if (req.method === 'GET' && !f.includes('..') && existsSync(f)) {
+      const type = { html: 'text/html', js: 'text/javascript', css: 'text/css', json: 'application/json', svg: 'image/svg+xml' }[f.split('.').pop()] || 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': type }); return res.end(readFileSync(f));
+    }
+    json(res, 404, { error: 'not found' });
+  } catch (e) {
+    emit('error', { where: url.pathname, message: e.message });
+    json(res, 500, { say: 'Something went wrong on our side. Ask the rider which shop he can see and try again.', error: e.message });
+  }
+});
+
+export { TOOLS };
+export function start(port = PORT) {
+  return new Promise((ok) => server.listen(port, () => {
+    emit('server.started', { port });
+    if (env.DRY_RUN !== '1') startTelegram();
+    ok(server);
+  }));
+}
+
+if (process.argv[1] && process.argv[1].endsWith('server.js')) start().then(() => console.log(`ToTheDoor on http://localhost:${PORT}`));
