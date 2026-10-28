@@ -4,7 +4,7 @@
 // Usage: node scripts/setup-agents.js
 import '../src/env.js';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { GUIDE_WELCOME, GUIDE_PROMPT, ALERT_PROMPT } from '../src/prompts.js';
+import { GUIDE_WELCOME, GUIDE_PROMPT, ALERT_PROMPT, KEYWORDS } from '../src/prompts.js';
 
 const { BOLNA_API_KEY: KEY, PUBLIC_URL, TOOL_TOKEN } = process.env;
 if (!PUBLIC_URL) throw new Error('PUBLIC_URL missing: start ngrok and set it in .env');
@@ -36,7 +36,7 @@ const TOOL_DEFS = [
   ['log_outcome', 'Record how the visit ended, once the parcel is handed over or left as told.',
     { visit_id: S('visit_id returned by verify_caller'), result: S('What happened, e.g. "handed over", "left on the shoe rack"'), note: S('Anything else worth noting') }, ['visit_id', 'result']],
 ];
-const PRE = { verify_caller: 'Haan ji, ek second', ask_customer: 'Ek minute, ghar pe pooch leta hoon', check_approval: 'Bas ek second', next_instruction: '', rider_status: 'Ek second', call_customer: 'Ruko, abhi bulata hoon', log_outcome: '' };
+const PRE = { verify_caller: 'Haan ji, bolo', ask_customer: 'Haan, ruko ek second', check_approval: 'Haan ek second', next_instruction: '', rider_status: '', call_customer: 'Ruko, bulata hoon', log_outcome: '' };
 
 const apiTools = {
   tools: TOOL_DEFS.map(([name, description, properties, required]) => ({
@@ -68,7 +68,7 @@ const agentBody = ({ name, welcome, prompt, tools, terminate = 600 }) => ({
           llm_config: { provider: 'openai', family: 'openai', model: 'gpt-4.1-mini', temperature: 0.3, max_tokens: 120, agent_flow_type: 'streaming' },
         },
         synthesizer: { stream: true, provider: VOICE.provider, buffer_size: 150, audio_format: 'wav', provider_config: { model: VOICE.model, voice: VOICE.voice, voice_id: VOICE.voice_id, language: VOICE.language } },
-        transcriber: { provider: 'elevenlabs', model: 'scribe_v2_realtime', language: 'hi', stream: true, encoding: 'linear16', sampling_rate: 16000, endpointing: 250 },
+        transcriber: { provider: 'elevenlabs', model: 'scribe_v2_realtime', language: 'hi', stream: true, encoding: 'linear16', sampling_rate: 16000, endpointing: 250, keywords: KEYWORDS.join(', ') },
         ...(tools ? { api_tools: tools } : {}),
       },
     }],

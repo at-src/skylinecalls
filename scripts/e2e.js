@@ -47,7 +47,7 @@ check('visit is active', !!visit);
 
 console.log('\n== 3. Rider calls: says Zepto but wrong code, then right code');
 r = await tool('verify_caller', { service: 'zepto' });
-check('asks for the code', r.need === 'code', say(r));
+check('unconfirmed -> ask the customer, never asks for a code', r.need === 'customer' && /ask_customer/.test(r.say) && /Do not ask him for any code/.test(r.say), say(r));
 r = await tool('verify_caller', { service: 'zepto', code: '0000' });
 check('wrong code refused', r.verified === false, say(r));
 r = await tool('verify_caller', { service: 'zepto', code });

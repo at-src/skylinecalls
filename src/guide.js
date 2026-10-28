@@ -26,8 +26,8 @@ export function verify(args) {
     milestone(r.visit, 'verified', `📞 Your ${cap(r.visit.service)} rider is on the line. I'm guiding them to your door.`);
     return { verified: true, visit_id: r.visit.id, service: r.visit.service, say: 'Verified. Now ask where he is right now (or use what he already said) and call next_instruction.' };
   }
-  if (r.reason === 'need code') return { verified: false, need: 'code', say: `There is a ${r.expected_service} order. Ask him for the 4-digit delivery code. If he doesn't have it, call ask_customer.` };
-  if (r.reason === 'wrong code') return { verified: false, need: 'code', say: 'That code is wrong. Ask him to check it once. If it is still wrong, call ask_customer.' };
+  if (r.reason === 'need code') return { verified: false, need: 'customer', say: `Could not confirm him from what he said. Do not ask him for any code. Give no directions. Say "Haan, ruko ek second" and call ask_customer.` };
+  if (r.reason === 'wrong code') return { verified: false, need: 'customer', say: 'Could not confirm him. Give no directions. Call ask_customer.' };
   return { verified: false, need: 'customer', say: `${r.reason}. Do not give any directions. Say you'll check with the family and call ask_customer.` };
 }
 
