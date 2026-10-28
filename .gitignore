@@ -11,3 +11,6 @@ Thumbs.db
 .env.*
 !.env.example
 data/
+data/
+.design-refs/
+.chrome-3d/

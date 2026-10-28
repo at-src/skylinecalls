@@ -31,6 +31,24 @@ export function getVisit(vid) {
   return v || null;
 }
 
+// ---------- ETA from the delivery app ----------
+const CITY_M_PER_MIN = 300; // ~18 km/h in city traffic on a two-wheeler
+
+export function setEta(vid, minutes, origin = null) {
+  const v = getVisit(vid); if (!v) return null;
+  const patch = { eta_min: Number(minutes), eta_at: new Date().toISOString() };
+  if (origin) patch.origin = origin;
+  emit('visit.eta', { visit: vid, eta_min: patch.eta_min, origin: origin?.name });
+  return updateVisit(vid, patch);
+}
+
+// minutes left by the last ETA, counting down since it was given
+export function remainingMin(v) {
+  if (v?.eta_min == null) return null;
+  return Math.max(0, v.eta_min - (Date.now() - Date.parse(v.eta_at)) / 60000);
+}
+export const approxDistanceM = (v) => { const m = remainingMin(v); return m == null ? null : Math.round(m * CITY_M_PER_MIN); };
+
 export const updateVisit = (vid, patch) => { const v = getVisit(vid); if (!v) return null; Object.assign(v, patch); return put(v); };
 
 export const activeVisits = () => Object.values(all()).map((v) => getVisit(v.id)).filter((v) => v && v.status === 'active');

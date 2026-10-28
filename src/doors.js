@@ -49,6 +49,29 @@ export function matchSeen(door, seen) {
   return best;
 }
 
+// he named one of the big landmarks (hubs) around the area
+export function matchHub(door, seen) {
+  if (!seen) return null;
+  let best = null;
+  for (const h of door.hubs || []) {
+    for (const l of [h.name, ...(h.also_called || [])]) {
+      const s = score(seen, l);
+      if (s >= 0.6 && (!best || s > best.score)) best = { hub: h, score: s };
+    }
+  }
+  return best?.hub || null;
+}
+
+// best hub to send someone at p to first: on the way (closer to the anchor than he is), shortest detour
+export function bestHub(door, p) {
+  const A = { lat: door.anchor.lat, lng: door.anchor.lng };
+  const dA = distance(p, A);
+  return (door.hubs || [])
+    .filter((h) => distance(h, A) < dA - 100)
+    .map((h) => ({ h, cost: distance(p, h) + distance(h, A) }))
+    .sort((a, b) => a.cost - b.cost)[0]?.h || null;
+}
+
 // nearest point on the path to a position (n = 0 is the anchor, n = k is the end of step k)
 export function nearestStep(door, p) {
   const pts = [{ n: 0, lat: door.anchor.lat, lng: door.anchor.lng }, ...door.steps.map((s) => ({ n: s.n, lat: s.lat, lng: s.lng }))];

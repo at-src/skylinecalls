@@ -61,3 +61,20 @@ export function startSim(vid, speed = 8) {
 }
 export function stopSim(vid) { clearInterval(timers[vid]); delete timers[vid]; }
 export const isRiding = (vid) => !!timers[vid];
+
+// Approximate position from the app's ETA when there's no live GPS.
+// With a known origin (restaurant / store): a point along the road route, remaining distance from the anchor.
+// Without one: no point, only a radius around the anchor (shown as a ring).
+const routes = {};
+export async function estimatePosition(v, door, remainingM) {
+  if (remainingM == null) return null;
+  const anchor = { lat: door.anchor.lat, lng: door.anchor.lng };
+  if (!v.origin) return { approx: true, radius_m: remainingM, center: anchor };
+  const key = `${v.origin.lat},${v.origin.lng}`;
+  if (!routes[key]) routes[key] = densify(decodePolyline((await route(v.origin, anchor)).polyline), 10);
+  const pts = routes[key];
+  // walk back from the anchor along the route by the remaining distance
+  let left = remainingM, i = pts.length - 1;
+  while (left > 0 && i > 0) { left -= distance(pts[i], pts[i - 1]); i--; }
+  return { approx: true, lat: pts[i].lat, lng: pts[i].lng, radius_m: Math.max(80, Math.round(remainingM * 0.25)) };
+}

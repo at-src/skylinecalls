@@ -1,6 +1,6 @@
 // Guidance logic behind the agent's tools. Every function returns a short English fact sheet the agent turns into Hinglish speech.
-import { getDoor, matchSeen, nearestStep } from './doors.js';
-import { getVisit, updateVisit, verifyCaller, closeVisit } from './visits.js';
+import { getDoor, matchSeen, nearestStep, matchHub, bestHub } from './doors.js';
+import { getVisit, updateVisit, verifyCaller, closeVisit, remainingMin, approxDistanceM } from './visits.js';
 import { getRider } from './rider.js';
 import { route, landmarks, findPlace, distance, direction, relativeSide } from './maps.js';
 import { emit } from './store.js';
@@ -45,7 +45,11 @@ async function context(v) {
 
 export async function status(v) {
   const { door, r, anchor, toAnchor, zone } = await context(v);
-  if (!r) return { say: 'No live location for this rider yet. Ask him which landmark or shop he can see.' };
+  if (!r) {
+    const m = remainingMin(v);
+    if (m != null) return { eta_min: Math.round(m), approx_distance_m: approxDistanceM(v), say: `No live location. By the app ETA he is about ${Math.max(1, Math.round(m))} min (roughly ${(approxDistanceM(v) / 1000).toFixed(1)} km) away. Ask him where he is.` };
+    return { say: 'No live location for this rider yet. Ask him which landmark or shop he can see.' };
+  }
   let around = [];
   try { around = (await landmarks(r)).landmarks.slice(0, 3).map((l) => `${l.name} (${l.relation}, ${l.distance_m} m)`); } catch {}
   return {
@@ -67,7 +71,11 @@ export async function next(v, seen = '') {
   if (match?.kind === 'at') return pathFrom(v, door, match.n, `He is at "${match.label}".`);
   if (match?.kind === 'during') return pathFrom(v, door, match.n - 1, `He is passing "${match.label}", still on the way.`, true);
 
-  // 2) He named something not on the path: find it on the map and steer him from there.
+  // 2) He named one of the big landmarks around the area: send him on from there, like a person would.
+  const hub = matchHub(door, seen);
+  if (hub) return reply(v, 'far', `He is at ${hub.name}. Tell him, one part at a time: ${hub.to_anchor} Ask him to tell you when he reaches ${door.anchor.name}.`);
+
+  // 3) He named something not on the path: find it on the map and steer him from there.
   //    When he's already close, only accept places within 300 m of him (avoids jumping to a same-named place elsewhere).
   if (seen && seen.trim().length > 2) {
     const near = r || anchor;
@@ -85,7 +93,7 @@ export async function next(v, seen = '') {
     if (!r) return reply(v, zone, `Could not find "${seen}" on the map. Ask him for the name of a big shop, bank, school or temple near him.`);
   }
 
-  // 3) Nothing useful said: use his live position.
+  // 4) Nothing useful said: use his live position.
   if (!r) return reply(v, null, 'No location yet. Ask him which shop or landmark he can see right now.');
   if (zone === 'far') return roadDirections(v, door, r, anchor, `He is about ${round(toAnchor)} m away.`);
   const near = nearestStep(door, r);
@@ -93,6 +101,11 @@ export async function next(v, seen = '') {
 }
 
 async function roadDirections(v, door, from, anchor, lead) {
+  // like a person: if he's right at a big landmark, go from there; if one is on his way, send him there first
+  const atHub = (door.hubs || []).find((h) => distance(from, h) < 300);
+  if (atHub) return reply(v, 'far', `${lead} He is near ${atHub.name}. Tell him, one part at a time: ${atHub.to_anchor} Ask him to tell you when he reaches ${door.anchor.name}.`);
+  const hub = distance(from, anchor) > 600 ? bestHub(door, from) : null;
+  if (hub) return reply(v, 'far', `${lead} Tell him to come to ${hub.name} first (about ${(distance(from, hub) / 1000).toFixed(1)} km, he can ask anyone). When he says he is there: ${hub.to_anchor}`);
   let text = `${lead} Guide him to ${door.anchor.name}, ${door.anchor.description}`;
   try {
     const rt = await route(from, anchor);

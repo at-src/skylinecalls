@@ -11,6 +11,38 @@
     "source": "google",
     "confirmed": true
   },
+  "hubs": [
+    {
+      "name": "Silk Board junction",
+      "also_called": ["Silk Board", "Silkboard", "Central Silk Board"],
+      "lat": 12.91657, "lng": 77.62338,
+      "to_anchor": "From Silk Board come on Outer Ring Road towards Agara, turn right on 5th Main Road into HSR, then ask anyone for BDA Complex, it's 1 km in."
+    },
+    {
+      "name": "Agara junction",
+      "also_called": ["Agara", "Agara signal", "Agara lake", "Agara flyover"],
+      "lat": 12.92394, "lng": 77.65163,
+      "to_anchor": "From Agara take Outer Ring Road towards Silk Board, after the flyover turn left on 9th Main Road, keep going straight to BDA Complex."
+    },
+    {
+      "name": "HSR Club",
+      "also_called": ["The HSR Club", "HSR club", "17th Main"],
+      "lat": 12.90937, "lng": 77.64322,
+      "to_anchor": "From HSR Club go up 17th Main Road, turn left on 17th Cross, then right on 12th Main Road. BDA Complex is right there."
+    },
+    {
+      "name": "Jakkasandra",
+      "also_called": ["Jakkasandra", "Jakkasandra cross road"],
+      "lat": 12.92339, "lng": 77.63858,
+      "to_anchor": "From Jakkasandra get on 14th Main Road and come straight, BDA Complex is on 14th Main itself."
+    },
+    {
+      "name": "14th Main Road, Sector 7",
+      "also_called": ["Sector 7", "14th Main"],
+      "lat": 12.90744, "lng": 77.63726,
+      "to_anchor": "Stay on 14th Main Road and come straight about 800 metres, BDA Complex is on the road itself."
+    }
+  ],
   "steps": [
     {
       "n": 1,

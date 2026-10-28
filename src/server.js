@@ -89,6 +89,7 @@ const routes = {
   'GET /health': () => ({ ok: true }),
   'GET /api/state': () => ({ visits: activeVisits(), door: getDoor(defaultDoorId()), events: recentEvents().slice(-100) }),
   'GET /api/door': () => getDoor(defaultDoorId()),
+  'GET /api/config': () => ({ mapsKey: env.GOOGLE_MAPS_KEY, door: getDoor(defaultDoorId()) }),
   'POST /api/visits': async (b) => createVisit({ service: detectService(b.service) || b.service || 'delivery', rider_phone: b.rider_phone || null, source: 'api' }),
   'POST /api/visits/close': async (b) => closeVisit(b.visit_id, b.status || 'closed', b.note || ''),
   'POST /api/rider/position': async (b) => setPosition(b.visit_id, { lat: Number(b.lat), lng: Number(b.lng) }, 'gps'),
