@@ -12,6 +12,9 @@ const tg = async (method, body) => {
   return r.json();
 };
 
+// set during the scripted demo replay: never place real calls
+export const flags = { noCalls: false };
+
 export function notify(text) {
   emit('notify', { text });
   tg('sendMessage', { text }).catch(() => {});
@@ -57,7 +60,7 @@ export function waitApproval(aid, ms) {
 export async function ringCustomer(message) {
   emit('customer.ring', { message, dry: dry() || env.ALLOW_CALLS !== '1' });
   notify(`📞 ${message}`);
-  if (dry() || env.ALLOW_CALLS !== '1' || !env.BOLNA_ALERT_AGENT_ID) return { rang: false, reason: 'calls disabled' };
+  if (dry() || flags.noCalls || env.ALLOW_CALLS !== '1' || !env.BOLNA_ALERT_AGENT_ID) return { rang: false, reason: 'calls disabled' };
   const r = await fetch('https://api.bolna.ai/call', {
     method: 'POST', headers: { Authorization: `Bearer ${env.BOLNA_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ agent_id: env.BOLNA_ALERT_AGENT_ID, recipient_phone_number: env.CUSTOMER_PHONE, user_data: { message } }),

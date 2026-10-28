@@ -14,3 +14,6 @@ data/
 data/
 .design-refs/
 .chrome-3d/
+scripts/*.jpg
+scripts/*.png
+scripts/*.log

@@ -68,11 +68,12 @@ export async function next(v, seen = '') {
   emit('tool.next', { visit: v.id, seen, match: match && `${match.kind}:${match.n}`, zone, distance_m: toAnchor && Math.round(toAnchor) });
 
   // 1) He named something on our path: that fixes where he is, whatever the GPS says.
-  if (match?.kind === 'at') return pathFrom(v, door, match.n, `He is at "${match.label}".`);
-  if (match?.kind === 'during') return pathFrom(v, door, match.n - 1, `He is passing "${match.label}", still on the way.`, true);
+  if (match?.kind === 'at') { placed(v, stepPoint(door, match.n), match.n, match.label); return pathFrom(v, door, match.n, `He is at "${match.label}".`); }
+  if (match?.kind === 'during') { const a = stepPoint(door, match.n - 1), b = stepPoint(door, match.n); placed(v, { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 }, match.n - 1, match.label); return pathFrom(v, door, match.n - 1, `He is passing "${match.label}", still on the way.`, true); }
 
   // 2) He named one of the big landmarks around the area: send him on from there, like a person would.
   const hub = matchHub(door, seen);
+  if (hub) placed(v, hub, -1, hub.name);
   if (hub) return reply(v, 'far', `He is at ${hub.name}. Tell him, one part at a time: ${hub.to_anchor} Ask him to tell you when he reaches ${door.anchor.name}.`);
 
   // 3) He named something not on the path: find it on the map and steer him from there.
@@ -83,6 +84,7 @@ export async function next(v, seen = '') {
     let place = null;
     try { place = (await findPlace(seen, near, 2000)).find((p) => p.distance_m < maxFromRider); } catch {}
     if (place) {
+      placed(v, place, -1, place.name);
       const d = distance(place, anchor);
       if (d <= 60) return pathFrom(v, door, 0, `He is at ${place.name}, right at ${door.anchor.name}.`);
       if (d <= FAR_M) {
@@ -133,6 +135,13 @@ function pathFrom(v, door, at, lead, continuing = false) {
   if (st.n === door.steps.length) milestone(v, 'door', `🚪 Your ${cap(v.service)} rider is at your building, coming up now.`);
   const last = st.n === door.steps.length;
   return reply(v, 'near', `${lead} Next step (${st.n} of ${door.steps.length}): ${st.instruction}${last ? '' : ` Then ask: "${st.check}"`}`);
+}
+
+// where the agent now believes the rider is (drives the live map)
+const stepPoint = (door, n) => (n === 0 ? { lat: door.anchor.lat, lng: door.anchor.lng } : { lat: door.steps[n - 1].lat, lng: door.steps[n - 1].lng });
+function placed(v, p, step, label) {
+  if (!p) return;
+  emit('rider.placed', { visit: v.id, lat: p.lat, lng: p.lng, step, label });
 }
 
 function reply(v, zone, say) {

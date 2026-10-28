@@ -3,13 +3,15 @@
 import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { env } from './env.js';
-import { emit, bus, recentEvents } from './store.js';
+import { emit, bus, recentEvents, load, save } from './store.js';
 import { createVisit, activeVisits, detectService, getVisit, closeVisit } from './visits.js';
 import { getDoor, defaultDoorId } from './doors.js';
 import { verify, status, next, outcome, visitOf } from './guide.js';
 import { requestApproval, waitApproval, getApproval, resolveApproval, ringCustomer, notify } from './notify.js';
 import { setPosition, planRide, startSim, stopSim, getRider, advance } from './rider.js';
 import { startTelegram } from './telegram.js';
+import { findPlace } from './maps.js';
+import { replay } from './demo/replay.js';
 
 const PORT = Number(env.PORT || 3200);
 const TOKEN = env.TOOL_TOKEN || '';
@@ -89,7 +91,22 @@ const routes = {
   'GET /health': () => ({ ok: true }),
   'GET /api/state': () => ({ visits: activeVisits(), door: getDoor(defaultDoorId()), events: recentEvents().slice(-100) }),
   'GET /api/door': () => getDoor(defaultDoorId()),
-  'GET /api/config': () => ({ mapsKey: env.GOOGLE_MAPS_KEY, door: getDoor(defaultDoorId()) }),
+  'GET /api/config': () => ({ mapsKey: env.GOOGLE_MAPS_KEY, door: getDoor(defaultDoorId()), home: load('home', null) }),
+  // search an area or address (biased to Bengaluru) for the "where's home?" screen
+  'GET /api/geocode': async (b, q) => {
+    const text = (q.get('q') || '').trim();
+    if (text.length < 2) return [];
+    const near = q.get('lat') ? { lat: Number(q.get('lat')), lng: Number(q.get('lng')) } : { lat: 12.9716, lng: 77.5946 };
+    return (await findPlace(text, near, 30000)).slice(0, 5).map((p) => ({ name: p.name, address: p.address, lat: p.lat, lng: p.lng }));
+  },
+  'POST /api/home': async (b) => {
+    const home = { lat: Number(b.lat), lng: Number(b.lng), label: String(b.label || 'Home').slice(0, 80), set: new Date().toISOString() };
+    save('home', home);
+    emit('home.set', home);
+    return home;
+  },
+  // scripted demo call through the real tools (no phone calls)
+  'POST /api/demo/replay': async (b) => { replay(TOOLS, { pace: Number(b.pace || 1) }); return { ok: true }; },
   'POST /api/visits': async (b) => createVisit({ service: detectService(b.service) || b.service || 'delivery', rider_phone: b.rider_phone || null, source: 'api' }),
   'POST /api/visits/close': async (b) => closeVisit(b.visit_id, b.status || 'closed', b.note || ''),
   'POST /api/rider/position': async (b) => setPosition(b.visit_id, { lat: Number(b.lat), lng: Number(b.lng) }, 'gps'),
@@ -116,7 +133,8 @@ const routes = {
       body: JSON.stringify({ agent_id: env.BOLNA_GUIDE_AGENT_ID, recipient_phone_number: env.RIDER_PHONE, user_data: { visit_id: v.id, customer_name: getDoor(v.door_id).customer.name } }),
     });
     const j = await r.json();
-    emit('call.started', { visit: v.id, execution: j.execution_id, ok: r.ok });
+    emit('call.started', { visit: v.id, execution: j.execution_id, ok: r.ok, caller: getDoor(v.door_id) && (v.service.charAt(0).toUpperCase() + v.service.slice(1)) + ' rider' });
+    if (r.ok && j.execution_id) followCall(v.id, j.execution_id);
     return { ok: r.ok, execution_id: j.execution_id };
   },
   'POST /bolna/webhook': async (b) => { emit('bolna.event', { status: b.status, execution: b.id || b.execution_id, transcript: (b.transcript || '').slice(-600) }); return { ok: true }; },
@@ -160,6 +178,24 @@ const server = createServer(async (req, res) => {
     json(res, 500, { say: 'Something went wrong on our side. Ask the rider which shop he can see and try again.', error: e.message });
   }
 });
+
+// Polls a live Bolna call and emits each new transcript line once, plus the end of the call.
+function followCall(visit, execution) {
+  let seen = 0, tries = 0;
+  const timer = setInterval(async () => {
+    try {
+      const e = await (await fetch('https://api.bolna.ai/executions/' + execution, { headers: { Authorization: `Bearer ${env.BOLNA_API_KEY}` } })).json();
+      const lines = String(e.transcript || '').split('\n').map((l) => l.trim()).filter(Boolean);
+      for (; seen < lines.length; seen++) {
+        const m = lines[seen].match(/^(assistant|user)\s*:\s*(.*)$/i);
+        if (m && m[2]) emit('call.line', { visit, role: m[1].toLowerCase() === 'user' ? 'rider' : 'agent', text: m[2] });
+      }
+      if (['completed', 'failed', 'no-answer', 'busy', 'canceled', 'error'].includes(e.status) || ++tries > 300) {
+        clearInterval(timer); emit('call.ended', { visit, status: e.status });
+      }
+    } catch {}
+  }, 1500);
+}
 
 export { TOOLS };
 export function start(port = PORT) {
