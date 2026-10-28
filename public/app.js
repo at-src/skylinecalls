@@ -20,6 +20,7 @@ async function boot() {
   cfg = await (await fetch('/api/config')).json();
   door = cfg.door;
   city = new City($('#globe'));
+  window.__city = city;
   city.onFrame.push(placePins);
   bindUi();
   listen();
@@ -63,7 +64,7 @@ async function setHome(h, persist = true) {
   const H = city.home;
   city.camera.position.set(H.x + 900, 1300, H.z + 1300);
   city.controls.target.set(H.x, 0, H.z);
-  city.look(new THREE.Vector3(H.x, 0, H.z), 430, 0.98, Math.PI * 0.2, 4.2);
+  city.look(new THREE.Vector3(H.x, 0, H.z), 300, 1.12, Math.PI * 0.2, 4.2);
   setTimeout(() => veil(false), 350);
   if (!callActive) status(expecting ? 'Someone is on the way' : 'Watching the door', expecting);
 }
@@ -133,7 +134,7 @@ function placeRider(p, step, label) {
   // frame rider and home together
   const H = city.home, mid = new THREE.Vector3((v.x + H.x) / 2, 0, (v.z + H.z) / 2);
   const d = Math.hypot(v.x - H.x, v.z - H.z);
-  city.look(mid, Math.max(190, Math.min(2400, d * 1.9)), d > 500 ? 0.78 : 0.95, null, 2.4);
+  city.look(mid, Math.max(170, Math.min(2400, d * 1.8)), d > 500 ? 0.82 : 1.08, null, 2.4);
 }
 
 // ======================= call panel =======================
@@ -246,9 +247,9 @@ async function refreshExpect() {
 // ======================= ui wiring =======================
 function bindUi() {
   const H = () => (city.home ? city.home.clone() : new THREE.Vector3());
-  $('#v3d').onclick = () => { setSeg('v3d'); city.look(H(), 430, 0.98, null, 1.6); };
+  $('#v3d').onclick = () => { setSeg('v3d'); city.look(H(), 300, 1.12, null, 1.6); };
   $('#vtop').onclick = () => { setSeg('vtop'); city.look(H(), 700, 0.05, null, 1.6); };
-  $('#recenter').onclick = () => city.look(H(), 430, 0.98, null, 1.6);
+  $('#recenter').onclick = () => city.look(H(), 300, 1.12, null, 1.6);
   const zoom = (f) => { const d = city.camera.position.distanceTo(city.controls.target); const sph = new THREE.Spherical().setFromVector3(city.camera.position.clone().sub(city.controls.target)); city.look(city.controls.target.clone(), Math.max(50, Math.min(3000, d * f)), sph.phi, sph.theta, 0.7); };
   $('#zin').onclick = () => zoom(0.6);
   $('#zout').onclick = () => zoom(1.6);

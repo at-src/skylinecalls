@@ -17,7 +17,7 @@ const p = await b.newPage();
 await p.setViewport({ width: 1600, height: 900 });
 const errs = [];
 p.on('pageerror', (e) => errs.push(e.message.slice(0, 200)));
-p.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
+p.on('console', (m) => { if (['error', 'warning'].includes(m.type())) errs.push(m.type() + ': ' + m.text().slice(0, 300)); });
 await p.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
 await p.evaluate(() => localStorage.clear());
 await p.reload({ waitUntil: 'domcontentloaded' });
