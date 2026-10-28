@@ -1,0 +1,84 @@
+{
+  "id": "demo-hsr",
+  "label": "Demo home, HSR Layout Sector 6 (invented building near real landmarks)",
+  "customer": { "name": "Sam", "language": "hi-IN" },
+  "anchor": {
+    "name": "BDA Complex",
+    "also_called": ["BDA Complex HSR", "BDA", "Bangalore One Centre", "Punjab National Bank", "PNB"],
+    "description": "BDA Complex main gate on 14th Main Road, Sector 6, HSR Layout. Punjab National Bank is right next to the gate.",
+    "lat": 12.9136798,
+    "lng": 77.6372965,
+    "source": "google",
+    "confirmed": true
+  },
+  "steps": [
+    {
+      "n": 1,
+      "instruction": "Stand at the BDA Complex main gate on 14th Main Road, facing the road. Turn left and go straight down 14th Main Road for about 120 metres, towards McDonald's.",
+      "see": ["McDonald's", "McDonalds", "Bank of Baroda Aadhaar Centre"],
+      "pass": ["Travel Buddy", "Durga Puja ground", "Madeshwaran Footwear"],
+      "side": "straight",
+      "distance_m": 120,
+      "check": "Can you see McDonald's on your left?",
+      "lat": 12.912407,
+      "lng": 77.637544,
+      "map_matches": [
+        { "name": "McDonald's", "lat": 12.912407, "lng": 77.637544 },
+        { "name": "Travel Buddy", "lat": 12.913134, "lng": 77.637207 },
+        { "name": "Madeshwaran Footwear", "lat": 12.912799, "lng": 77.637613 }
+      ]
+    },
+    {
+      "n": 2,
+      "instruction": "McDonald's is on your left. Just after McDonald's there is a narrow lane on the left with a blue iron gate. Go to the blue gate.",
+      "see": ["blue iron gate", "blue gate", "narrow lane"],
+      "pass": ["N E S Public School", "NES School"],
+      "side": "left",
+      "distance_m": 15,
+      "check": "Do you see the blue iron gate right after McDonald's?",
+      "lat": 12.91233,
+      "lng": 77.63761,
+      "map_matches": [
+        { "name": "N E S Public School", "lat": 12.912491, "lng": 77.637254 }
+      ]
+    },
+    {
+      "n": 3,
+      "instruction": "Go in through the blue gate. Bikes are parked along the passage. Walk past the bikes to the stairs at the end.",
+      "see": ["stairs", "staircase", "seedhi", "sidhi"],
+      "pass": ["bikes", "passage", "parking"],
+      "side": "straight",
+      "distance_m": 20,
+      "check": "Have you reached the stairs?",
+      "lat": 12.91226,
+      "lng": 77.63775,
+      "map_matches": []
+    },
+    {
+      "n": 4,
+      "instruction": "Take the stairs up to the second floor. It is the door on the right with a green nameplate. Knock, the bell doesn't work.",
+      "see": ["green nameplate", "green board", "right door", "second floor", "door"],
+      "pass": ["first floor"],
+      "side": "right",
+      "distance_m": 5,
+      "check": "Are you at the door with the green nameplate?",
+      "lat": 12.91226,
+      "lng": 77.63775,
+      "map_matches": []
+    }
+  ],
+  "door": {
+    "floor": "2nd",
+    "side": "right",
+    "action": "knock (bell doesn't work)",
+    "marks": ["blue iron gate in the lane just after McDonald's", "bikes parked in the passage", "green nameplate"]
+  },
+  "fallback": {
+    "if_no_answer": "Leave it on the shoe rack outside the door and send a photo.",
+    "contact": "Security guard at the blue gate (day time only)",
+    "safe_spot": "shoe rack outside the door"
+  },
+  "notes": ["The blue gate is closed after 11 pm; call the customer then."],
+  "format": "Each step: `instruction` to give, `pass` = things seen on the way during the step, `see` = what he sees on reaching the end of the step (which means: give the next step). lat/lng = end point of the step.",
+  "verified_at": "2026-10-28"
+}
