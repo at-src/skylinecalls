@@ -334,7 +334,7 @@ const poolMat = () => new THREE.ShaderMaterial({
   uniforms: sharedUniforms(),
   vertexShader: 'attribute vec3 aCol; varying vec3 vC; varying vec2 vUv; varying float vDist; void main(){ vUv = uv; vC = aCol; vec4 mv = viewMatrix * modelMatrix * instanceMatrix * vec4(position,1.); vDist = -mv.z; gl_Position = projectionMatrix * mv; }',
   fragmentShader: `${COMMON} varying vec3 vC; varying vec2 vUv; varying float vDist;
-    void main(){ float d = length(vUv - .5) * 2.; float a = pow(max(1. - d, 0.), 2.2); float f = exp(-uFogDensity * uFogDensity * vDist * vDist); gl_FragColor = vec4(vC * a * .32 * f * uLamp * uNight, 1.); }`,
+    void main(){ float d = length(vUv - .5) * 2.; float a = pow(max(1. - d, 0.), 2.2); float f = exp(-uFogDensity * uFogDensity * vDist * vDist); gl_FragColor = vec4(vC * a * .5 * f * uLamp * uNight, 1.); }`,
 });
 
 // ------------------------------------------------------------------ city
@@ -750,7 +750,7 @@ export class City {
       const [x, z, kind] = spots[i];
       const roll = (i * 0.618) % 1; const c = kind === 2 || roll < 0.2 ? [1, 0.58, 0.24] : roll < 0.3 ? [1, 0.95, 0.85] : [0.82, 0.9, 1];
       cols.set(c, i * 3);
-      m4.compose(new THREE.Vector3(x, 0.2, z), q, new THREE.Vector3(18, 1, 18)); pools.setMatrixAt(i, m4);
+      m4.compose(new THREE.Vector3(x, 0.2, z), q, new THREE.Vector3(24, 1, 24)); pools.setMatrixAt(i, m4);
       heads.push(x, 8.5, z); headCol.push(c[0] * 3, c[1] * 3, c[2] * 3);
     }
     pools.geometry.setAttribute('aCol', new THREE.InstancedBufferAttribute(cols, 3));
@@ -758,7 +758,7 @@ export class City {
     const hg = new THREE.BufferGeometry();
     hg.setAttribute('position', new THREE.Float32BufferAttribute(heads, 3));
     hg.setAttribute('color', new THREE.Float32BufferAttribute(headCol, 3));
-    this.lampHeads = new THREE.Points(hg, new THREE.PointsMaterial({ size: 2.2, vertexColors: true, map: glowTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.lampHeads = new THREE.Points(hg, new THREE.PointsMaterial({ size: 3, vertexColors: true, map: glowTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.world.add(this.lampHeads);
   }
 
