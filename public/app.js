@@ -366,6 +366,7 @@ function bindUi() {
   const zoom = (f) => { if (!orbit.center) return; syncOrbitFromCamera(); orbit.range = Math.max(40, Math.min(9000, orbit.range * f)); aim(orbit.center, orbit.range, orbit.pitch); };
   $('#zin').onclick = () => zoom(0.6);
   $('#zout').onclick = () => zoom(1.6);
+  $('#changeHome').onclick = async () => { localStorage.removeItem('ttd-home'); await fetch('/api/home/clear', { method: 'POST' }); home = null; viewer.entities.removeAll(); pins.forEach((p) => p.node.remove()); pins = []; if (riderPin) { riderPin.node.remove(); riderPin = null; } $('#q').value = ''; $('#results').innerHTML = ''; $('#useLoc').disabled = false; showOnboard(); };
   $('#allow').onclick = () => resolve('allowed');
   $('#block').onclick = () => resolve('blocked');
   $('#playDemo').onclick = async () => {

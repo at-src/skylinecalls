@@ -219,3 +219,6 @@ p { text-wrap: pretty; }
 .zoom button { width: 38px; height: 38px; display: grid; place-items: center; font-size: 18px; line-height: 1; color: var(--muted); transition: color 300ms var(--ease), background 300ms var(--ease); }
 .zoom button:hover { color: var(--text); background: var(--raise2); }
 .zoom button + button { border-top: 1px solid var(--line); }
+
+.textbtn { height: 38px; padding: 0 var(--s3); border-radius: var(--r-md); font-size: 14px; line-height: 20px; color: var(--muted); background: rgba(15, 15, 13, 0.72); backdrop-filter: blur(14px); border: 1px solid var(--line2); transition: color 300ms var(--ease); }
+.textbtn:hover { color: var(--text); }

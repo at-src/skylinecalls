@@ -105,6 +105,7 @@ const routes = {
     emit('home.set', home);
     return home;
   },
+  'POST /api/home/clear': async () => { save('home', null); return { ok: true }; },
   // scripted demo call through the real tools (no phone calls)
   'POST /api/demo/replay': async (b) => { replay(TOOLS, { pace: Number(b.pace || 1) }); return { ok: true }; },
   'POST /api/visits': async (b) => createVisit({ service: detectService(b.service) || b.service || 'delivery', rider_phone: b.rider_phone || null, source: 'api' }),
