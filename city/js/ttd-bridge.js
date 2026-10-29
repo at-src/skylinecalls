@@ -206,7 +206,7 @@ function buildNightLights(fx) {
     pts.push([N[b * 2], N[b * 2 + 1]]);
     const kind = cls[ci] || 'residential';
     const main = MAIN.has(kind);
-    const gap = main ? 30 : 38;
+    const gap = main ? 22 : 26; // (closer than the 30-40 m of many streets, so the pools overlap and no stretch is dark)
     const roll = rnd();
     const col = main ? 'LED' : roll < 0.4 ? 'SODIUM' : roll < 0.7 ? 'WARM' : 'LED';
     // one light pole every gap metres, on alternating kerbs of the main roads, one kerb of the lanes
@@ -249,7 +249,7 @@ function buildNightLights(fx) {
     const pm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     const d = uv().sub(0.5).length().mul(2.0);
     const fall = pow(max(float(1).sub(d), 0.0), 2.0);
-    pm.colorNode = vec3(...c).mul(fall).mul(on).mul(0.3);
+    pm.colorNode = vec3(...c).mul(fall).mul(on).mul(0.38);
     pm.opacityNode = float(1);
     const pools = new THREE.InstancedMesh(poolGeo, pm, n);
     const hm = new THREE.MeshBasicNodeMaterial();
@@ -276,10 +276,11 @@ function buildNightLights(fx) {
     const along = lit.x, across = lit.y, phase = lit.z, gap = lit.w;
     // distance to the nearest pole along the road, and a soft edge across it
     const dl = abs(fract(along.sub(phase).div(gap).add(0.5)).sub(0.5)).mul(gap);
-    const peak = exp(dl.mul(dl).div(gap.mul(gap).mul(0.06)).negate());
+    const peak = exp(dl.mul(dl).div(gap.mul(gap).mul(0.045)).negate());
     const edge = smoothstep(0.0, 0.22, across).mul(smoothstep(1.0, 0.78, across));
     const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
-    m.colorNode = col.mul(peak.mul(0.6).add(0.32)).mul(edge).mul(on).mul(0.55);
+    // light falls from each pole: bright under it, fading towards the next, only a faint spill between
+    m.colorNode = col.mul(peak.mul(0.85).add(0.05)).mul(edge).mul(on).mul(0.6);
     m.opacityNode = float(1);
     const mesh = new THREE.Mesh(g, m);
     mesh.renderOrder = 2;
