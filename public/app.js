@@ -2,6 +2,7 @@
 // Everything on the map is driven by server events: where the agent believes the rider is, the door path, the home.
 import * as THREE from 'three';
 import { City } from './city3d.js';
+import { SlopCity, prebuiltFor } from './slop-city.js';
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
@@ -19,9 +20,9 @@ boot();
 async function boot() {
   cfg = await (await fetch('/api/config')).json();
   door = cfg.door;
-  city = new City($('#globe'));
-  window.__city = city;
-  city.onFrame.push(placePins);
+  frameHooks.push(placePins);
+  const saved0 = cfg.home || JSON.parse(localStorage.getItem('ttd-home') || 'null');
+  useCityFor(saved0 || { lat: 12.9128, lng: 77.6374 });
   bindUi();
   listen();
   refreshExpect();
@@ -30,6 +31,25 @@ async function boot() {
 }
 
 // ======================= home and city =======================
+// The renderer: the pre-built 3D city (an iframe, slop-city.js) where there is one for the home, else the in-page city
+// built from OpenStreetMap on the fly (city3d.js). Frame hooks are kept here so they survive a switch.
+const frameHooks = [];
+const addFrameHook = (f) => { frameHooks.push(f); if (city) city.onFrame.push(f); };
+function useCityFor(ll) {
+  const pre = ll && !new URLSearchParams(location.search).has('classic') ? prebuiltFor(ll.lat, ll.lng) : null;
+  const want = pre ? 'slop:' + pre.id : 'classic';
+  if (city && city.kind === want) return;
+  const tod = city ? { ...city.tod } : null;
+  if (city) {
+    if (city.destroy) city.destroy();
+    else { city.renderer.setAnimationLoop(null); city.renderer.domElement.remove(); }
+  }
+  city = pre ? new SlopCity($('#globe'), pre.id) : new City($('#globe'));
+  city.kind = want;
+  if (tod) { if (tod.mode === 'live') city.setLive(); else if (tod.mode === 'play') { city.tod.hour = tod.hour; city.playDay(tod.dayLength); } else city.setHour(tod.hour); }
+  frameHooks.forEach((f) => city.onFrame.push(f));
+  window.__city = city;
+}
 const lastStep = () => (door?.steps?.length ? door.steps[door.steps.length - 1] : door.anchor);
 function distKm(a, b) { const R = 6371, d = (x) => (x * Math.PI) / 180; const dl = d(b.lat - a.lat), dg = d(b.lng - a.lng); return 2 * R * Math.asin(Math.sqrt(Math.sin(dl / 2) ** 2 + Math.cos(d(a.lat)) * Math.cos(d(b.lat)) * Math.sin(dg / 2) ** 2)); }
 
@@ -48,7 +68,8 @@ async function setHome(h, persist = true) {
     data = await (await fetch(`/api/city?lat=${home.lat}&lng=${home.lng}`)).json();
     if (data.error) throw new Error(data.error);
   } catch (e) { veil(true, "Couldn't load map data for this spot. Try the demo home."); return; }
-  city.build(data, home);
+  useCityFor(home);
+  await city.build(data, home);
   clearPins();
   addPin(home, 'home', `<div class="pin-home"><span></span></div><div class="pin-tag">${esc(home.label)}</div>`, null, 'home');
   if (taught) {
@@ -57,7 +78,7 @@ async function setHome(h, persist = true) {
     addPin(door.anchor, 'stop', `<div class="pin-dot">S</div><div class="pin-tag">${esc(door.anchor.name)}</div>`, 'stop-0');
     door.steps.forEach((s, i) => { if (i < door.steps.length - 1 && distKm(s, home) * 1000 > 22) addPin(s, 'stop', `<div class="pin-dot">${s.n}</div><div class="pin-tag">${esc(stopLabel(s))}</div>`, 'stop-' + s.n); });
   }
-  (data.landmarks || []).slice(0, 14).forEach((l) => addPinLocal(new THREE.Vector3(l.x, 30, l.z), 'hub', `<div class="pin-tag hub">${esc(l.name.replace(/&amp;/g, '&'))}</div>`));
+  (data.landmarks || []).slice(0, 14).forEach((l) => addPinLocal(fromBake(data, l, 30), 'hub', `<div class="pin-tag hub">${esc(l.name.replace(/&amp;/g, '&'))}</div>`));
   city.expecting = expecting;
   renderRibbon();
   // cinematic arrival: start high and far, settle over the home while the city rises
@@ -66,7 +87,14 @@ async function setHome(h, persist = true) {
   city.controls.target.set(H.x, 0, H.z);
   city.look(new THREE.Vector3(H.x, 0, H.z), 300, 1.12, Math.PI * 0.2, 4.2);
   setTimeout(() => veil(false), 350);
+  window.dispatchEvent(new Event('ttd-home'));
   if (!callActive) status(expecting ? 'Someone is on the way' : 'Watching the door', expecting);
+}
+
+// a point of the OpenStreetMap bake (x east, z south of data.origin, metres) in the current renderer's frame
+function fromBake(data, p, y) {
+  const o = data.origin, lat = o.lat - p.z / 110540, lng = o.lng + p.x / (111320 * Math.cos((o.lat * Math.PI) / 180));
+  const v = city.local(lat, lng); v.y = y; return v;
 }
 
 function veil(on, text) { const v = $('#veil'); if (text) $('#veilText').textContent = text; v.classList.toggle('off', !on); }
@@ -260,10 +288,26 @@ function bindClock() {
   slider.addEventListener('pointerdown', () => (dragging = true));
   window.addEventListener('pointerup', () => (dragging = false));
   slider.oninput = () => { city.setHour(parseFloat(slider.value)); mode('manual'); };
-  live.onclick = () => { city.setLive(); mode('live'); };
+  live.onclick = () => { city.setLive(); mode('live'); rainLive = true; liveRain(); };
+  // Rain: in Live it follows the real weather at the home (/api/weather, checked every 10 minutes); the button turns
+  // it on or off by hand. ?rain opens the map in the rain.
+  const rainBtn = $('#tRain');
+  let rainLive = true, rainOn = false;
+  const showRain = (on) => { rainOn = on; rainBtn.setAttribute('aria-pressed', String(on)); city.setRain?.(on ? 1 : 0); };
+  async function liveRain() {
+    if (!rainLive || !home) return;
+    try {
+      const w = await (await fetch(`/api/weather?lat=${home.lat}&lng=${home.lng}`)).json();
+      if (rainLive) { rainOn = w.rain > 0; rainBtn.setAttribute('aria-pressed', String(rainOn)); city.setRain?.(w.rain || 0); }
+    } catch { /* offline: keep it as it is */ }
+  }
+  rainBtn.onclick = () => { rainLive = false; showRain(!rainOn); };
+  if (new URLSearchParams(location.search).has('rain')) { rainLive = false; showRain(true); }
+  setInterval(liveRain, 10 * 60 * 1000);
+  window.addEventListener('ttd-home', liveRain);
   play.onclick = () => { if (city.tod.mode === 'play') { city.setHour(city.hour); mode('manual'); } else { city.playDay(60); mode('play'); } };
   let last = '', lastMode = '';
-  city.onFrame.push(() => {
+  addFrameHook(() => {
     const h = city.hour, txt = fmtHour(h);
     if (city.tod.mode !== lastMode) { lastMode = city.tod.mode; mode(lastMode); }
     if (!dragging) slider.value = h.toFixed(2);

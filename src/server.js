@@ -1,7 +1,7 @@
 // ToTheDoor server: Bolna tool endpoints, Telegram bot, rider position/simulator, live event feed.
 // Plain node:http, no dependencies.
 import { createServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { env } from './env.js';
 import { emit, bus, recentEvents, load, save } from './store.js';
 import { createVisit, activeVisits, detectService, getVisit, closeVisit } from './visits.js';
@@ -88,12 +88,31 @@ const TOOLS = {
 };
 
 // ---------- http ----------
+const weatherCache = new Map();
 const routes = {
   'GET /health': () => ({ ok: true }),
   'GET /api/state': () => ({ visits: activeVisits(), door: getDoor(defaultDoorId()), events: recentEvents().slice(-100) }),
   'GET /api/door': () => getDoor(defaultDoorId()),
   'GET /api/config': () => ({ mapsKey: env.GOOGLE_MAPS_KEY, door: getDoor(defaultDoorId()), home: load('home', null) }),
   // search an area or address (biased to Bengaluru) for the "where's home?" screen
+  // Is it raining at the home right now? (Open-Meteo, no key needed; cached 10 minutes.) The live map rains with it.
+  'GET /api/weather': async (b, q) => {
+    const lat = Number(q.get('lat')), lng = Number(q.get('lng'));
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { rain: 0 };
+    const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+    const hit = weatherCache.get(key);
+    if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value;
+    try {
+      const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=precipitation,rain,weather_code`, { signal: AbortSignal.timeout(6000) });
+      const c = (await r.json()).current || {};
+      // mm in the last hour -> 0..1: a drizzle at 0.2 mm, a downpour from 4 mm; thunderstorm codes are heavy rain
+      const mm = c.precipitation ?? c.rain ?? 0;
+      const rain = c.weather_code >= 95 ? 1 : mm <= 0 ? 0 : Math.min(1, 0.3 + mm / 5);
+      const value = { rain, mm, code: c.weather_code ?? null };
+      weatherCache.set(key, { at: Date.now(), value });
+      return value;
+    } catch { return { rain: 0, error: 'weather unavailable' }; }
+  },
   'GET /api/geocode': async (b, q) => {
     const text = (q.get('q') || '').trim();
     if (text.length < 2) return [];
@@ -177,9 +196,11 @@ const server = createServer(async (req, res) => {
     const h = routes[`${req.method} ${url.pathname}`];
     if (h) return json(res, 200, (await h(req.method === 'POST' ? await readBody(req) : {}, url.searchParams)) ?? null);
     // static files from public/
-    const f = 'public' + (url.pathname === '/' ? '/index.html' : url.pathname);
-    if (req.method === 'GET' && !f.includes('..') && existsSync(f)) {
-      const type = { html: 'text/html', js: 'text/javascript', css: 'text/css', json: 'application/json', svg: 'image/svg+xml' }[f.split('.').pop()] || 'application/octet-stream';
+    // (/map3d/ is the 3D city renderer in city/, shown inside the dashboard)
+    let f = 'public' + (url.pathname === '/' ? '/index.html' : url.pathname);
+    if (url.pathname.startsWith('/map3d/')) f = 'city/' + (url.pathname.slice(7) || 'index.html');
+    if (req.method === 'GET' && !f.includes('..') && existsSync(f) && statSync(f).isFile()) {
+      const type = { html: 'text/html', js: 'text/javascript', mjs: 'text/javascript', css: 'text/css', json: 'application/json', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg' }[f.split('.').pop()] || 'application/octet-stream';
       res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }); return res.end(readFileSync(f));
     }
     json(res, 404, { error: 'not found' });
