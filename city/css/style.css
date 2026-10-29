@@ -1,0 +1,4 @@
+/* The 3D map fills its frame; the dashboard draws everything else over it */
+html, body { margin: 0; height: 100%; overflow: hidden; background: #2a3146; }
+#canvas-container, #canvas-container canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#canvas-container canvas { touch-action: none; }
