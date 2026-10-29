@@ -423,7 +423,8 @@ function buildHighlights(fx, footprints) {
         const ph = (t * 0.7 + l.x * 0.01) % 1;
         l.ring.scale.setScalar(l.r * (1.05 + ph * 1.6));
         l.ring.updateMatrix(); l.ring.updateMatrixWorld();
-        l.ringA.value = (1 - ph) * l.level * 0.9;
+        // only the current marks pulse; once superseded the ring fades out and the building keeps a faint trace
+        l.ringA.value = l.fadeTo < 1 ? (1 - ph) * 0.9 * Math.max(0, (l.level - 0.18) / 0.82) : (1 - ph) * l.level * 0.9;
       }
       group.updateMatrixWorld(true);
     }

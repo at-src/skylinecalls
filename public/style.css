@@ -182,6 +182,13 @@ p { text-wrap: pretty; }
 .tg-feed { list-style: none; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; }
 .tg-feed li { padding: var(--s2) var(--s3); border-radius: var(--r-md); background: var(--raise); border: 1px solid var(--line); font-size: 13px; line-height: 18px; animation: up 450ms var(--ease) both; display: flex; gap: var(--s2); }
 .tg-feed li time { margin-left: auto; color: var(--faint); font-family: "Geist Mono", monospace; font-size: 11px; flex: none; }
+.tg-feed .tgb { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.tg-feed .tgb > span { white-space: pre-line; }
+.tgk { display: flex; gap: 6px; }
+.tgbtn { flex: 1; padding: 6px var(--s2); border-radius: var(--r-sm); font-size: 12px; line-height: 16px; color: #8fd0f5; background: rgba(42, 163, 224, 0.1); border: 1px solid rgba(42, 163, 224, 0.3); transition: background 300ms var(--ease), opacity 300ms var(--ease); }
+.tgbtn:hover:not(:disabled) { background: rgba(42, 163, 224, 0.2); }
+.tgbtn:disabled { opacity: 0.45; cursor: default; }
+.tgbtn.picked:disabled { opacity: 1; }
 .tg-feed .none { color: var(--faint); background: none; border: 1px dashed var(--line2); }
 
 @media (prefers-reduced-motion: reduce) {

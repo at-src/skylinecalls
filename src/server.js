@@ -4,9 +4,9 @@ import { createServer } from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { env } from './env.js';
 import { emit, bus, recentEvents, load, save } from './store.js';
-import { createVisit, activeVisits, detectService, getVisit, closeVisit } from './visits.js';
+import { createVisit, activeVisits, awaitingVisits, detectService, getVisit, closeVisit } from './visits.js';
 import { getDoor, defaultDoorId } from './doors.js';
-import { verify, status, next, outcome, visitOf } from './guide.js';
+import { verify, status, next, outcome, visitOf, confirmDelivery, closeUnanswered } from './guide.js';
 import { requestApproval, waitApproval, getApproval, resolveApproval, ringCustomer, notify } from './notify.js';
 import { setPosition, planRide, startSim, stopSim, getRider, advance } from './rider.js';
 import { startTelegram } from './telegram.js';
@@ -102,7 +102,7 @@ const TOOLS = {
 const weatherCache = new Map();
 const routes = {
   'GET /health': () => ({ ok: true }),
-  'GET /api/state': () => ({ visits: activeVisits(), door: getDoor(defaultDoorId()), events: recentEvents().slice(-100) }),
+  'GET /api/state': () => ({ visits: activeVisits(), awaiting: awaitingVisits(), door: getDoor(defaultDoorId()), events: recentEvents().slice(-100) }),
   'GET /api/door': () => getDoor(defaultDoorId()),
   'GET /api/config': () => ({ mapsKey: env.GOOGLE_MAPS_KEY, door: getDoor(defaultDoorId()), home: load('home', null) }),
   // search an area or address (biased to Bengaluru) for the "where's home?" screen
@@ -157,6 +157,8 @@ const routes = {
   'POST /api/demo/teach': async (b) => { teach(TOOLS, { pace: Number(b.pace || 1) }).catch((e) => emit('error', { where: 'teach', message: e.message })); return { ok: true }; },
   'POST /api/visits': async (b) => createVisit({ service: detectService(b.service) || b.service || 'delivery', rider_phone: b.rider_phone || null, source: 'api' }),
   'POST /api/visits/close': async (b) => closeVisit(b.visit_id, b.status || 'closed', b.note || ''),
+  // the receiver answers 'did it arrive?' from the dashboard (same as the Telegram buttons)
+  'POST /api/visits/confirm': async (b) => confirmDelivery(b.visit_id, b.received !== false, 'dashboard') || { ok: false, error: 'nothing waiting for an answer' },
   'POST /api/rider/position': async (b) => setPosition(b.visit_id, { lat: Number(b.lat), lng: Number(b.lng) }, 'gps'),
   'POST /api/rider/plan': async (b) => { const r = await planRide(b.visit_id, { from: b.from, via: b.via, door_id: getVisit(b.visit_id)?.door_id }); return { points: r.path.length }; },
   'POST /api/rider/start': async (b) => { startSim(b.visit_id, Number(b.speed || 8)); return { ok: true }; },
@@ -246,7 +248,7 @@ const server = createServer(async (req, res) => {
     let f = 'public' + (url.pathname === '/' ? '/index.html' : url.pathname);
     if (url.pathname.startsWith('/map3d/')) f = 'city/' + (url.pathname.slice(7) || 'index.html');
     if (req.method === 'GET' && !f.includes('..') && existsSync(f) && statSync(f).isFile()) {
-      const type = { html: 'text/html', js: 'text/javascript', mjs: 'text/javascript', css: 'text/css', json: 'application/json', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg' }[f.split('.').pop()] || 'application/octet-stream';
+      const type = { html: 'text/html', js: 'text/javascript', mjs: 'text/javascript', css: 'text/css', json: 'application/json', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', mp3: 'audio/mpeg' }[f.split('.').pop()] || 'application/octet-stream';
       res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }); return res.end(readFileSync(f));
     }
     json(res, 404, { error: 'not found' });
@@ -278,6 +280,8 @@ export { TOOLS };
 export function start(port = PORT) {
   return new Promise((ok) => server.listen(port, () => {
     emit('server.started', { port });
+    // deliveries nobody answered for an hour count as delivered
+    const sweep = setInterval(closeUnanswered, 60e3); sweep.unref?.();
     if (env.DRY_RUN !== '1') startTelegram();
     ok(server);
   }));

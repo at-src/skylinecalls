@@ -15,9 +15,10 @@ const tg = async (method, body) => {
 };
 
 
-export function notify(text) {
-  emit('notify', { text });
-  tg('sendMessage', { text }).catch(() => {});
+// buttons: [[{ text, data }]] shown under the message (Telegram inline keyboard, and on the dashboard's phone panel)
+export function notify(text, buttons = null) {
+  emit('notify', { text, buttons });
+  tg('sendMessage', { text, ...(buttons ? { reply_markup: { inline_keyboard: buttons.map((row) => row.map((b) => ({ text: b.text, callback_data: b.data }))) } } : {}) }).catch(() => {});
 }
 
 // ---------- live approvals ----------

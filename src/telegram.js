@@ -4,14 +4,15 @@
 //   Allow / Block buttons -> live approval for an unknown caller
 import { env } from './env.js';
 import { emit } from './store.js';
-import { createVisit, activeVisits, detectService, closeVisit } from './visits.js';
+import { createVisit, activeVisits, awaitingVisits, detectService, closeVisit } from './visits.js';
+import { confirmDelivery } from './guide.js';
 import { resolveApproval } from './notify.js';
 import { setPosition, getRider } from './rider.js';
 
 const api = (m, body) => fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${m}`, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
 }).then((r) => r.json());
-const say = (text) => api('sendMessage', { chat_id: env.TELEGRAM_CHAT_ID, text });
+const say = (text) => (text ? api('sendMessage', { chat_id: env.TELEGRAM_CHAT_ID, text }) : null);
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function handleText(text) {
@@ -24,6 +25,9 @@ export function handleText(text) {
     const a = activeVisits();
     return a.length ? 'Expecting:\n' + a.map((v) => `• ${cap(v.service)} (code ${v.code}), until ${new Date(v.expires).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })}`).join('\n') : 'Nobody is expected right now.';
   }
+  // answering 'did it arrive?'
+  if (awaitingVisits().length && /^(not received|not delivered|nahi mila|didn.?t (get|receive)|no\b)/.test(low)) return confirmDelivery(null, false, 'Telegram') ? '' : 'Nothing waiting for an answer.';
+  if (awaitingVisits().length && /^(received|got it|mil gaya|yes|done)/.test(low)) return confirmDelivery(null, true, 'Telegram') ? '' : 'Nothing waiting for an answer.';
   if (/^(done|cancel|received)/.test(low)) {
     const a = activeVisits().pop();
     if (!a) return 'Nothing to close.';
@@ -76,6 +80,12 @@ export async function startTelegram() {
         if (up.message?.text) {
           emit('telegram.in', { text: up.message.text });
           await say(handleText(up.message.text));
+        }
+        if (up.callback_query && /^(got|miss):/.test(up.callback_query.data)) {
+          const [act, vid] = String(up.callback_query.data).split(':');
+          const ok = confirmDelivery(vid, act === 'got', 'Telegram');
+          await api('answerCallbackQuery', { callback_query_id: up.callback_query.id, text: ok ? (act === 'got' ? 'Marked delivered' : 'Marked not received') : 'Already closed' });
+          continue;
         }
         if (up.callback_query) {
           const [act, aid] = String(up.callback_query.data).split(':');

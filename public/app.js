@@ -19,6 +19,12 @@ let callKind = 'guide', pendingTarget = null, teaching = null;
 boot();
 
 async function boot() {
+  // ?reset starts over (role and home); there is no button for it
+  if (new URLSearchParams(location.search).has('reset')) {
+    localStorage.removeItem('ttd-role'); localStorage.removeItem('ttd-home');
+    await fetch('/api/home/clear', { method: 'POST' }).catch(() => {});
+    history.replaceState(null, '', location.pathname);
+  }
   cfg = await (await fetch('/api/config')).json();
   door = cfg.door;
   frameHooks.push(placePins);
@@ -141,13 +147,29 @@ function placePins() {
   }
 }
 
-const stopLabel = (s) => cap((s.see && s.see[0]) || s.instruction.split('.')[0]);
+// ---- the door path as stops: one format everywhere, built only from what the receiver taught
+// start: the landmark's name; each step: the first thing the rider will see there; the door: floor and side
+const clip = (s, n = 26) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
+const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+function floorText(f) {
+  const t = String(f ?? '').trim().toLowerCase().replace(/\s*floor$/, '');
+  if (!t) return '';
+  if (/^(0|g|ground)$/.test(t)) return 'Ground floor';
+  const n = parseInt(t, 10);
+  return Number.isFinite(n) ? `${ordinal(n)} floor` : `${cap(t)} floor`;
+}
+function doorText(d) {
+  const side = String(d?.side ?? '').trim().toLowerCase().replace(/\s*side$/, '');
+  return ['Door', [floorText(d?.floor), side].filter(Boolean).join(', ')].filter(Boolean).join(' · ');
+}
+const stopLabel = (s) => clip(cap(String((s.see && s.see[0]) || s.label || s.instruction.split('.')[0]).trim()));
+const stopNode = (num, label, cls = '') => el('div', 'stop' + (cls ? ' ' + cls : ''), `<span class="num">${num}</span><span class="lbl">${esc(label)}</span>`);
 
 function renderRibbon() {
   const r = $('#ribbon'); r.innerHTML = '';
   if (!taught) { r.append(el('div', 'stop now', '<span class="num">?</span><span class="lbl">Door not taught yet. Call ToTheDoor to teach it.</span>')); return; }
-  const stops = [{ n: 0, l: door.anchor.name }, ...door.steps.map((s, i) => ({ n: s.n, l: i === door.steps.length - 1 ? `Door · ${door.door.floor} floor ${door.door.side}` : stopLabel(s) }))];
-  stops.forEach((s, i) => r.append(el('div', 'stop' + (i === stops.length - 1 ? ' home' : ''), `<span class="num">${i === stops.length - 1 ? '⌂' : s.n === 0 ? 'S' : s.n}</span><span class="lbl">${esc(s.l)}</span>`)));
+  r.append(stopNode('S', clip(door.anchor.name)));
+  door.steps.forEach((s, i) => r.append(i === door.steps.length - 1 ? stopNode('⌂', doorText(door.door), 'home') : stopNode(i + 1, stopLabel(s))));
   markRibbon();
 }
 function markRibbon() {
@@ -215,12 +237,26 @@ function think(html, kind = '') { const t = el('div', 'think ' + kind, `<span>${
 function sys(text) { $('#stream').append(el('div', 'sys', esc(text))); scroll(); }
 const scroll = () => { const s = $('#stream'); s.scrollTop = s.scrollHeight; };
 
-function tg(text, from = 'bot') {
+function tg(text, from = 'bot', buttons = null) {
   const f = $('#tgFeed'); f.querySelector('.none')?.remove();
-  f.prepend(el('li', from === 'sam' ? 'me' : '', `<span>${esc(text)}</span><time>${clock()}</time>`));
+  const li = el('li', from === 'sam' ? 'me' : '', `<div class="tgb"><span>${esc(text)}</span>${buttons ? '<div class="tgk"></div>' : ''}</div><time>${clock()}</time>`);
+  // the bot's "did it arrive?" buttons: the same answer as on Telegram
+  for (const b of (buttons || []).flat()) {
+    const [act, vid] = String(b.data).split(':');
+    const btn = el('button', 'tgbtn', esc(b.text));
+    btn.dataset.visit = vid;
+    btn.onclick = async () => {
+      li.querySelectorAll('.tgbtn').forEach((x) => (x.disabled = true));
+      btn.classList.add('picked');
+      await fetch('/api/visits/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visit_id: vid, received: act === 'got' }) });
+    };
+    li.querySelector('.tgk').append(btn);
+  }
+  f.prepend(li);
   $('#tgCount').textContent = f.children.length + ' messages';
 }
-
+// once a visit is answered (here, on Telegram, or by the hour running out) its buttons stop working
+const answered = (vid) => document.querySelectorAll(`.tgbtn[data-visit="${vid}"]`).forEach((b) => (b.disabled = true));
 function reasonFor(tool, out, args) {
   const say = String(out?.say || '');
   if (tool === 'verify_caller') return out.verified ? [`<b>Caller checked</b> · expected ${esc(cap(out.service))} order`, 'ok'] : ['<b>Not expected</b> · giving nothing away', 'bad'];
@@ -304,14 +340,16 @@ async function taughtStop(s) {
   // the ribbon grows as it learns
   const r = $('#ribbon');
   r.querySelector('.stop.now')?.remove();
-  r.append(el('div', 'stop done', `<span class="num">${s.n === 0 ? 'S' : s.n}</span><span class="lbl">${esc(cap(s.label))}</span>`));
+  r.append(stopNode(s.n === 0 ? 'S' : s.n, s.n === 0 ? clip(s.label) : stopLabel(s), 'done'));
   r.append(el('div', 'stop now', '<span class="num">…</span><span class="lbl">listening</span>'));
   city.look(top.clone ? top.clone().setY(0) : new THREE.Vector3(top.x, 0, top.z), 230, 1.02, null, 2.0);
 }
 function teachDoor(d) {
   const r = $('#ribbon');
   r.querySelector('.stop.now')?.remove();
-  r.append(el('div', 'stop home now', `<span class="num">⌂</span><span class="lbl">Door · ${esc(d.floor)} floor ${esc(d.side)}</span>`));
+  const done = r.querySelectorAll('.stop.done');
+  if (done.length > 2) done[done.length - 1].remove();
+  r.append(stopNode('⌂', doorText(d), 'home now'));
 }
 async function doneTeaching() {
   try { door = await (await fetch('/api/door')).json(); } catch {}
@@ -346,7 +384,6 @@ async function startSender(id) {
   $('#roleLabel').textContent = 'Sending as';
   $('#household').textContent = sender.name;
   $('#senderPanel').hidden = false;
-  $('#changeHome').textContent = 'Switch role';
   $('#guideNumber').textContent = sender.guide_number;
   $('#apiKey').textContent = sender.api_key;
   const e = $('#empty');
@@ -431,6 +468,9 @@ function hideGuard(st) {
 }
 async function resolve(st) { if (!pendingApproval) return; await fetch('/api/approvals/resolve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approval_id: pendingApproval, status: st }) }); }
 
+// the scripted demo calls come with recorded lines: play each as it appears in the transcript
+const voice = new Audio();
+function playLine(src) { voice.pause(); voice.src = src; voice.play().catch(() => {}); }
 // ======================= events =======================
 function listen() {
   const es = new EventSource('/api/events');
@@ -442,9 +482,10 @@ function handle(e) {
   switch (e.type) {
     case 'visit.created': setExpecting(true); status(`${cap(e.service)} on the way`, true); refreshExpect(); if (e.source === 'telegram') tg(`Expecting ${cap(e.service)}`, 'sam'); break;
     case 'visit.eta': setExpecting(true); status(`${cap(e.service || 'Delivery')} · about ${e.eta_min} min away`, true); break;
-    case 'visit.closed': setExpecting(false); refreshExpect(); if (e.status === 'delivered') { status('Delivered', false, true); tag('Delivered', 'done'); riderStep = $('#ribbon').children.length - 1; markRibbon(); if (home) setTimeout(() => city.look(city.home.clone(), 260, 0.9, null, 2.6), 900); } break;
+    case 'visit.awaiting': setExpecting(false); refreshExpect(); status('Rider says delivered · waiting for Sam', true); tag('Confirming', 'live'); break;
+    case 'visit.closed': setExpecting(false); refreshExpect(); answered(e.visit); if (e.status === 'not_received') { status('Not received · flagged', false); tag('Not received', 'stop'); } if (e.status === 'delivered') { status('Delivered', false, true); tag('Delivered', 'done'); riderStep = $('#ribbon').children.length - 1; markRibbon(); if (home) setTimeout(() => city.look(city.home.clone(), 260, 0.9, null, 2.6), 900); } break;
     case 'call.started': callKind = e.kind || 'guide'; clearCallouts(); city.clearHighlights?.(); startCall(e.caller || 'Rider'); if (callKind === 'calibration') beginTeaching(); break;
-    case 'call.line': line(e.role, e.text); break;
+    case 'call.line': line(e.role, e.text); if (e.audio) playLine(e.audio); break;
     case 'call.ended': endCall(); break;
     case 'tool.call': lastNext = { tool: e.tool, args: e.args }; break;
     case 'tool.result': { const [h, k] = reasonFor(e.tool, e.out, e.args || (lastNext?.tool === e.tool ? lastNext.args : null)); think(h, k); break; }
@@ -458,7 +499,7 @@ function handle(e) {
     // live GPS (Telegram or a sender's rider app): move the marker, don't swing the camera every ping; a sender's view
     // shows its riders as the fleet instead
     case 'rider.position': if (e.mode !== 'sim' && !sender) placeRider(e, -1, 'live location', { frame: !riderPin }); break;
-    case 'notify': tg(e.text); break;
+    case 'notify': tg(e.text, 'bot', e.buttons); break;
     case 'telegram.in': tg(e.text, 'sam'); break;
     case 'approval.requested': showGuard(e.approval, e.caller); break;
     case 'approval.resolved': hideGuard(e.status); break;
@@ -531,8 +572,6 @@ function bindUi() {
   $('#pickSender').onclick = () => pickSender();
   $('#backRole').onclick = () => showRole();
   $('#runShift').onclick = async () => { for (const f of fleet.values()) { f.pin?.node.remove(); f.drop?.node.remove(); pins = pins.filter((p) => p !== f.pin && p !== f.drop); } fleet.clear(); renderOrders(); await fetch('/api/demo/fleet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sender: sender?.id }) }); };
-  $('#changeHome').onclick = async () => {
-    if (sender || !localStorage.getItem('ttd-role')) { localStorage.removeItem('ttd-role'); location.reload(); return; } localStorage.removeItem('ttd-home'); await fetch('/api/home/clear', { method: 'POST' }); home = null; $('#q').value = ''; $('#results').innerHTML = ''; $('#useLoc').disabled = false; showOnboard(); };
   $('#allow').onclick = () => resolve('allowed');
   $('#block').onclick = () => resolve('blocked');
   $('#playDemo').onclick = async () => {

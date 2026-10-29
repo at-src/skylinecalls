@@ -79,3 +79,23 @@ export function verifyCaller({ visit_id, service, code, caller_number }) {
   if (code) return { ok: false, reason: 'wrong code', expected_service: candidates[0].service };
   return { ok: false, reason: 'need code', expected_service: candidates[0].service };
 }
+// ---------- the receiver confirms ----------
+// When the rider says it's delivered we don't take his word for it: the visit waits for the receiver to say
+// "received" or "not received". Nobody remembers to reply every time, so an hour after the call with no reply it
+// counts as delivered.
+export const CONFIRM_MS = Number(process.env.CONFIRM_MIN || 60) * 60e3;
+export function awaitConfirm(vid, note = '') {
+  const v = updateVisit(vid, { status: 'awaiting', outcome: note, said_at: new Date().toISOString(), confirm_by: new Date(Date.now() + CONFIRM_MS).toISOString() });
+  if (v) emit('visit.awaiting', { visit: vid, note, confirm_by: v.confirm_by });
+  return v;
+}
+export const awaitingVisits = () => Object.values(all()).filter((v) => v.status === 'awaiting');
+export function confirmVisit(vid, received, by = 'receiver') {
+  const v = all()[vid];
+  if (!v || v.status !== 'awaiting') return null;
+  return closeVisit(vid, received ? 'delivered' : 'not_received', received ? `${v.outcome || 'delivered'} (confirmed by ${by})` : `${v.outcome || ''}: receiver says not received`.replace(/^: /, ''));
+}
+// visits past their hour with no reply; returns the ones it closed
+export function sweepAwaiting(now = Date.now()) {
+  return awaitingVisits().filter((v) => Date.parse(v.confirm_by) <= now).map((v) => closeVisit(v.id, 'delivered', `${v.outcome || 'delivered'} (no reply within an hour)`));
+}

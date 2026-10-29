@@ -90,7 +90,7 @@ export function orderStatus(o, { status, note = '' }) {
   o.status = status;
   o.events.push({ t: Date.now(), s: status, note });
   if (status === 'guiding') o.guided = true;
-  if ((status === 'delivered' || status === 'failed') && o.visit_id) { const v = getVisit(o.visit_id); if (v?.status === 'active') closeVisit(o.visit_id, status === 'delivered' ? 'delivered' : 'closed', note); }
+  if ((status === 'delivered' || status === 'failed') && o.visit_id) { const v = getVisit(o.visit_id); if (v?.status === 'active' || v?.status === 'awaiting') closeVisit(o.visit_id, status === 'delivered' ? 'delivered' : 'closed', note); }
   putOrder(o);
   emit('order.status', { order: o.id, sender: o.sender, status, note, guided: o.guided });
   return { ok: true };

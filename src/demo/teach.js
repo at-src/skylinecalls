@@ -4,13 +4,14 @@
 import { readFileSync } from 'node:fs';
 import { emit } from '../store.js';
 import { flags } from '../notify.js';
+import { clipFor } from './audio.js';
 
 const DEMO = JSON.parse(readFileSync(new URL('./door-hsr.json', import.meta.url), 'utf8'));
 const S = DEMO.steps;
 const step = (i) => ({ instruction: S[i].instruction, see: S[i].see, pass: S[i].pass, side: S[i].side, distance_m: S[i].distance_m, check: S[i].check, lat: S[i].lat, lng: S[i].lng, landmark: S[i].see[0], map_matches: S[i].map_matches });
 
 // [role, line, tool, args(session id)]
-const SCRIPT = [
+export const SCRIPT = [
   ['agent', 'Hi Sam! Chaliye aapke ghar ka raasta set karte hain, taaki koi bhi rider seedha darwaze tak aa sake. Aapke ghar ke paas sabse bada landmark kaunsa hai, jo sab jaante hain?'],
   ['customer', 'BDA Complex, 14th Main Road pe. Gate ke bilkul paas Punjab National Bank hai.', 'save_anchor', () => ({ name: 'BDA Complex', also_called: DEMO.anchor.also_called, description: DEMO.anchor.description, lat: DEMO.anchor.lat, lng: DEMO.anchor.lng })],
   ['agent', 'Mil gaya, BDA Complex, Sector 6. Gate pe road ki taraf face karke khade ho, toh pehle kidhar jaana hai?'],
@@ -39,16 +40,17 @@ export async function teach(TOOLS, { pace = 1 } = {}) {
     const cid = start.calibration_id;
     emit('call.started', { demo: true, caller: 'Sam · teaching the door', kind: 'calibration' });
     await sleep(1500);
-    for (const [role, text, tool, args] of SCRIPT) {
-      if (text && text !== 'Got it.') emit('call.line', { role, text, kind: 'calibration' });
-      if (text && text !== 'Got it.') await sleep(role === 'customer' ? 900 : 600);
+    for (const [i, [role, text, tool, args]] of SCRIPT.entries()) {
+      const spoken = text && text !== 'Got it.', clip = spoken ? clipFor('teach', i) : null;
+      if (spoken) emit('call.line', { role, text, kind: 'calibration', audio: clip?.src || null });
+      if (clip) await sleep(clip.seconds * 1000 + 250); else if (spoken) await sleep(role === 'customer' ? 900 : 600);
       if (tool) {
         const a = { calibration_id: cid, ...args() };
         emit('tool.call', { tool, args: a });
         const out = await TOOLS[tool](a);
         emit('tool.result', { tool, out, args: a });
       }
-      if (text && text !== 'Got it.') await sleep(Math.min(4200, 1400 + text.length * 34));
+      if (spoken) await sleep(clip ? (role === 'customer' ? 700 : 450) : Math.min(4200, 1400 + text.length * 34));
     }
     emit('call.ended', { demo: true, kind: 'calibration' });
     return { ok: true };

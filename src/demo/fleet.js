@@ -98,7 +98,7 @@ export async function fleet(TOOLS, { sender = 'zepto', pace = 1 } = {}) {
         callStarted = true;
         orderStatus(getOrder(guided.order), { status: 'guiding' });
         // the guided call, through the real tools, for this order's visit
-        const off = (e) => { if (e.type === 'visit.closed' && e.visit === guided.visit) { const o = getOrder(guided.order); if (o) orderStatus(o, { status: 'delivered', note: e.note || 'guided to the door' }); bus.off('event', off); } };
+        const off = (e) => { if (e.type === 'visit.closed' && e.visit === guided.visit) { const o = getOrder(guided.order); if (o) orderStatus(o, { status: e.status === 'delivered' ? 'delivered' : 'failed', note: e.note || 'guided to the door' }); bus.off('event', off); } };
         bus.on('event', off);
         replay(TOOLS, { pace, visit_id: guided.visit, caller: `${S.name} rider · ${guided.rider}`, service: sender }).catch((e) => emit('error', { where: 'fleet replay', message: e.message }));
       }

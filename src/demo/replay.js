@@ -5,8 +5,10 @@
 import { emit } from '../store.js';
 import { createVisit, getVisit } from '../visits.js';
 import { flags, notify } from '../notify.js';
+import { confirmDelivery } from '../guide.js';
+import { clipFor } from './audio.js';
 
-const SCRIPT = [
+export const SCRIPT = [
   ['agent', 'Hello?'],
   ['rider', 'Haan sir, Zepto se. Aapka order hai.', 'verify_caller', (v) => ({ visit_id: v.id, service: v.service })],
   ['agent', 'Haan ji, bolo. Location pe ho abhi?'],
@@ -47,19 +49,26 @@ export async function replay(TOOLS, { pace = 1, visit_id = null, caller = 'Zepto
     }
     emit('call.started', { visit: v.id, demo: true, caller });
     await sleep(1500);
-    for (const [role, text, tool, args] of SCRIPT) {
+    for (const [i, [role, text, tool, args]] of SCRIPT.entries()) {
       const said = text.replace(/Zepto/g, v.service.charAt(0).toUpperCase() + v.service.slice(1));
-      emit('call.line', { visit: v.id, role, text: said });
-      await sleep(role === 'rider' ? 900 : 600);
+      const clip = clipFor('guide', i, v.service);
+      emit('call.line', { visit: v.id, role, text: said, audio: clip?.src || null });
+      // with audio: the line plays out, then the agent looks it up; without: the old reading-speed pause
+      if (clip) await sleep(clip.seconds * 1000 + 250); else await sleep(role === 'rider' ? 900 : 600);
       if (tool) {
         const a = args(v);
         emit('tool.call', { tool, args: a });
         const out = await TOOLS[tool](a);
         emit('tool.result', { tool, out });
       }
-      await sleep(Math.min(4200, 1400 + text.length * 38));
+      await sleep(clip ? (role === 'rider' ? 700 : 450) : Math.min(4200, 1400 + text.length * 38));
     }
     emit('call.ended', { visit: v.id, demo: true });
+    // Sam sees the rider's word on Telegram and confirms it
+    await sleep(4200);
+    emit('telegram.in', { text: '✅ Received' });
+    await sleep(600);
+    confirmDelivery(v.id, true, 'Telegram');
     return { ok: true };
   } finally { running = false; flags.noCalls = false; flags.quiet = false; }
 }

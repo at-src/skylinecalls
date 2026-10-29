@@ -1,6 +1,6 @@
 // Guidance logic behind the agent's tools. Every function returns a short English fact sheet the agent turns into Hinglish speech.
 import { getDoor, matchSeen, nearestStep, matchHub, bestHub } from './doors.js';
-import { getVisit, updateVisit, verifyCaller, closeVisit, remainingMin, approxDistanceM } from './visits.js';
+import { getVisit, updateVisit, verifyCaller, closeVisit, awaitConfirm, confirmVisit, sweepAwaiting, awaitingVisits, remainingMin, approxDistanceM } from './visits.js';
 import { getRider } from './rider.js';
 import { route, landmarks, findPlace, distance, direction, relativeSide } from './maps.js';
 import { emit } from './store.js';
@@ -175,11 +175,28 @@ function reply(v, zone, say) {
 }
 
 export function outcome(v, result, note = '') {
-  const status = /deliver|done|handed|received|left|kept|rack/i.test(result) ? 'delivered' : 'closed';
-  closeVisit(v.id, status, `${result}${note ? ' — ' + note : ''}`);
+  const said = `${result}${note ? ' (' + note + ')' : ''}`;
   const time = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
-  notify(status === 'delivered' ? `✅ ${cap(v.service)} delivered: ${result}${note ? ' (' + note + ')' : ''}, ${time}.` : `ℹ️ ${cap(v.service)} visit closed: ${result}.`);
+  if (!/deliver|done|handed|received|left|kept|rack/i.test(result)) {
+    closeVisit(v.id, 'closed', said);
+    notify(`ℹ ${cap(v.service)} visit closed: ${said}, ${time}.`);
+    return { say: 'Logged. Thank him and say bye.' };
+  }
+  // the rider says it's delivered: the receiver confirms, or it closes on its own in an hour
+  awaitConfirm(v.id, said);
+  notify(`📦 ${cap(v.service)} rider says: ${said}, ${time}.\nGot it? If you don't reply, I'll mark it delivered in an hour.`, [[{ text: '✅ Received', data: `got:${v.id}` }, { text: '❌ Not received', data: `miss:${v.id}` }]]);
   return { say: 'Logged. Thank him and say bye.' };
 }
-
+// the receiver answers (Telegram button or reply, or the dashboard); with no vid, the latest visit waiting for an answer
+export function confirmDelivery(vid, received, by = 'receiver') {
+  const v = vid ? getVisit(vid) : awaitingVisits().pop();
+  if (!v || v.status !== 'awaiting') return null;
+  const out = confirmVisit(v.id, received, by);
+  notify(received ? `✅ ${cap(v.service)} marked delivered.` : `Noted: ${cap(v.service)} not received. I've flagged it to ${cap(v.service)}.`);
+  return out;
+}
+// an hour after the call with no answer: delivered
+export function closeUnanswered() {
+  for (const v of sweepAwaiting()) notify(`✅ ${cap(v.service)} marked delivered (no reply within an hour).`);
+}
 export const visitOf = (visit_id) => (visit_id ? getVisit(visit_id) : null);

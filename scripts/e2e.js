@@ -90,7 +90,27 @@ check('customer rung (dry run) and fallback given', recentEvents().some((e) => e
 r = await tool('log_outcome', { visit_id: vid, result: 'left on the shoe rack', note: 'photo sent' });
 check('outcome logged', /Logged/.test(r.say));
 const st = await (await fetch(base + '/api/state')).json();
-check('visit closed as delivered', !st.visits.find((v) => v.id === vid));
+check('rider\'s word alone does not close it: waiting for the receiver', !st.visits.find((v) => v.id === vid) && st.awaiting.some((v) => v.id === vid));
+const ask = recentEvents().filter((e) => e.type === 'notify' && e.buttons).pop();
+check('receiver asked with Received / Not received buttons', ask && ask.buttons[0].map((b) => b.data).join() === `got:${vid},miss:${vid}`, ask?.text);
+await post('/api/visits/confirm', { visit_id: vid, received: true });
+const closed = recentEvents().filter((e) => e.type === 'visit.closed' && e.visit === vid).pop();
+check('receiver confirms: closed as delivered', closed?.status === 'delivered', closed?.note);
+const again = await post('/api/visits/confirm', { visit_id: vid, received: false });
+check('a second answer changes nothing', again.ok === false);
+console.log('\n== 8b. No answer for an hour, and "not received"');
+{
+  const V = await import('../src/visits.js'), G = await import('../src/guide.js');
+  const a = V.createVisit({ service: 'swiggy', source: 'test' }); G.outcome(a, 'handed over');
+  const b = V.createVisit({ service: 'amazon', source: 'test' }); G.outcome(b, 'left at the door');
+  handleText('not received');
+  check('"not received" on Telegram flags the latest one', V.getVisit(b.id).status === 'not_received', V.getVisit(b.id).status);
+  check('the other is still waiting', V.getVisit(a.id).status === 'awaiting');
+  V.sweepAwaiting(Date.now() + V.CONFIRM_MS - 60e3);
+  check('not closed before the hour is up', V.getVisit(a.id).status === 'awaiting');
+  V.sweepAwaiting(Date.now() + V.CONFIRM_MS + 1000);
+  check('an hour with no answer: delivered', V.getVisit(a.id).status === 'delivered', V.getVisit(a.id).outcome);
+}
 
 console.log('\n== 9. Customer messages along the way (would go to Telegram)');
 const msgs = recentEvents().filter((e) => e.type === 'notify').map((e) => e.text);
