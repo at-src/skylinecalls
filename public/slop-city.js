@@ -70,11 +70,35 @@ export class SlopCity {
     }
   }
 
+  // The home's real sun (from /api/weather): its local time zone and today's sunrise and sunset. Live mode shows the
+  // home's own local time, and the city's lighting follows the real sun rather than a fixed 6 am / 6 pm.
+  setSun({ sunrise, sunset, utcOffset } = {}) {
+    if (Number.isFinite(sunrise) && Number.isFinite(sunset) && sunset > sunrise) this.sun = { rise: sunrise, set: sunset };
+    if (Number.isFinite(utcOffset)) this.utcOffset = utcOffset;
+    this.applyTime(true);
+  }
+  localHour() {
+    if (!Number.isFinite(this.utcOffset)) return clockHour();
+    const d = new Date(Date.now() + this.utcOffset * 1000);
+    return d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+  }
+  // a local hour -> the city's day, where sunrise is 6:15 and sunset 18:15 (what its lighting and street lights are set
+  // to): stretched piecewise so dawn, noon and dusk land where the real sun has them today
+  solar(h) {
+    if (!this.sun) return h;
+    const { rise, set } = this.sun, noon = (rise + set) / 2;
+    const seg = (x, a, b, c, d) => c + ((x - a) / (b - a)) * (d - c);
+    if (h < rise) return seg(h, rise - 6.25 * (rise / 6.25), rise, 0, 6.25);
+    if (h < noon) return seg(h, rise, noon, 6.25, 12.25);
+    if (h < set) return seg(h, noon, set, 12.25, 18.25);
+    return seg(h, set, 24, 18.25, 24);
+  }
+
   // the dashboard's clock: live, a fixed hour, or a day played in a minute; the city shows the nearest lighting preset
   tick() {
     const now = performance.now(), dt = Math.min(0.1, (now - this._last) / 1000);
     this._last = now;
-    if (this.tod.mode === 'live') this.tod.hour = clockHour();
+    if (this.tod.mode === 'live') this.tod.hour = this.localHour();
     else if (this.tod.mode === 'play') this.tod.hour = (this.tod.hour + (dt * 24) / this.tod.dayLength) % 24;
     this.applyTime();
     const t = now / 1000;
@@ -84,12 +108,12 @@ export class SlopCity {
     const key = Math.round(this.tod.hour * 4);
     if (!force && key === this._lastPreset) return;
     this._lastPreset = key;
-    this.send({ type: 'hour', hour: this.tod.hour });
+    this.send({ type: 'hour', hour: this.solar(this.tod.hour) });
   }
   // rain over the map, 0 (dry) .. 1 (downpour)
   setRain(amount) { this.rain = amount; this.send({ type: 'rain', amount }); }
   setHour(h) { this.tod.mode = 'manual'; this.tod.hour = ((h % 24) + 24) % 24; this.applyTime(true); }
-  setLive() { this.tod.mode = 'live'; this.tod.hour = clockHour(); this.applyTime(true); }
+  setLive() { this.tod.mode = 'live'; this.tod.hour = this.localHour(); this.applyTime(true); }
   playDay(seconds = 60) { this.tod.mode = 'play'; this.tod.dayLength = seconds; }
   get hour() { return this.tod.hour; }
 

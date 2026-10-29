@@ -295,9 +295,10 @@ function bindClock() {
   let rainLive = true, rainOn = false;
   const showRain = (on) => { rainOn = on; rainBtn.setAttribute('aria-pressed', String(on)); city.setRain?.(on ? 1 : 0); };
   async function liveRain() {
-    if (!rainLive || !home) return;
+    if (!home) return;
     try {
       const w = await (await fetch(`/api/weather?lat=${home.lat}&lng=${home.lng}`)).json();
+      city.setSun?.(w);
       if (rainLive) { rainOn = w.rain > 0; rainBtn.setAttribute('aria-pressed', String(rainOn)); city.setRain?.(w.rain || 0); }
     } catch { /* offline: keep it as it is */ }
   }

@@ -103,12 +103,18 @@ const routes = {
     const hit = weatherCache.get(key);
     if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value;
     try {
-      const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=precipitation,rain,weather_code`, { signal: AbortSignal.timeout(6000) });
-      const c = (await r.json()).current || {};
+      const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=precipitation,rain,weather_code,cloud_cover&daily=sunrise,sunset&timezone=auto&forecast_days=1`, { signal: AbortSignal.timeout(6000) });
+      const j = await r.json();
+      const c = j.current || {};
       // mm in the last hour -> 0..1: a drizzle at 0.2 mm, a downpour from 4 mm; thunderstorm codes are heavy rain
       const mm = c.precipitation ?? c.rain ?? 0;
       const rain = c.weather_code >= 95 ? 1 : mm <= 0 ? 0 : Math.min(1, 0.3 + mm / 5);
-      const value = { rain, mm, code: c.weather_code ?? null };
+      // today's sunrise and sunset at the home, as local hours, and the home's offset from UTC
+      const hourOf = (iso) => { const t = String(iso || '').split('T')[1] || ''; const [h, m] = t.split(':').map(Number); return Number.isFinite(h) ? h + (m || 0) / 60 : null; };
+      const value = {
+        rain, mm, code: c.weather_code ?? null, clouds: c.cloud_cover ?? null,
+        sunrise: hourOf(j.daily?.sunrise?.[0]), sunset: hourOf(j.daily?.sunset?.[0]), utcOffset: j.utc_offset_seconds ?? null
+      };
       weatherCache.set(key, { at: Date.now(), value });
       return value;
     } catch { return { rain: 0, error: 'weather unavailable' }; }
