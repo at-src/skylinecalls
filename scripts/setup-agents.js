@@ -1,10 +1,11 @@
 // Creates or updates the Bolna agents and points their tools at PUBLIC_URL. Places no calls.
 //   guide: answers the rider, verifies him, guides him to the door
 //   alert: rings the customer with one message (used by call_customer)
+//   calibrate: the customer teaches the way from a big landmark to their door, once
 // Usage: node scripts/setup-agents.js
 import '../src/env.js';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { GUIDE_WELCOME, GUIDE_PROMPT, ALERT_PROMPT, KEYWORDS } from '../src/prompts.js';
+import { GUIDE_WELCOME, GUIDE_PROMPT, ALERT_PROMPT, CALIB_WELCOME, CALIB_PROMPT, KEYWORDS } from '../src/prompts.js';
 
 const { BOLNA_API_KEY: KEY, PUBLIC_URL, TOOL_TOKEN } = process.env;
 if (!PUBLIC_URL) throw new Error('PUBLIC_URL missing: start ngrok and set it in .env');
@@ -36,20 +37,35 @@ const TOOL_DEFS = [
   ['log_outcome', 'Record how the visit ended, once the parcel is handed over or left as told.',
     { visit_id: S('visit_id returned by verify_caller'), result: S('What happened, e.g. "handed over", "left on the shoe rack"'), note: S('Anything else worth noting') }, ['visit_id', 'result']],
 ];
+const C = (d) => S(d);
+const CALIB_DEFS = [
+  ['start_calibration', 'Start setting up the door path. Call it first, once.',
+    { customer: S('Customer first name'), door_id: S('door_id from the call context, if any') }, ['customer']],
+  ['save_anchor', 'Save the big starting landmark near the house.',
+    { calibration_id: C('calibration_id from start_calibration'), name: S('Landmark name, e.g. BDA Complex'), also_called: S('Other names people use, comma separated'), description: S('One line about it, e.g. main gate on 14th Main, PNB next to it') }, ['calibration_id', 'name']],
+  ['save_step', 'Save one step of the way, from the end of the previous step (or the landmark).',
+    { calibration_id: C('calibration_id from start_calibration'), instruction: S('The step in plain English'), landmark: S('What he sees at the end of this step'), see: S('That thing and other ways to say it, comma separated'), pass: S('Things he passes on the way, comma separated'), distance_m: S('Distance in metres, if given'), side: S('left, right or straight') }, ['calibration_id', 'instruction', 'landmark']],
+  ['save_door', 'Save which door it is and what to do there.',
+    { calibration_id: C('calibration_id from start_calibration'), floor: S('Floor, e.g. 2nd'), side: S('left, right, front...'), action: S('knock, ring the bell, call...'), marks: S('How to recognise it, comma separated') }, ['calibration_id']],
+  ['save_fallback', 'Save what the rider should do if nobody opens.',
+    { calibration_id: C('calibration_id from start_calibration'), if_no_answer: S('What to do if nobody opens'), safe_spot: S('Where to leave it, if any'), contact: S('Who else can take it, if anyone') }, ['calibration_id', 'if_no_answer']],
+  ['finish_calibration', 'Check the path for gaps and save it.',
+    { calibration_id: C('calibration_id from start_calibration') }, ['calibration_id']],
+];
 const PRE = { verify_caller: 'Haan ji, bolo', ask_customer: 'Haan, ruko ek second', check_approval: 'Haan ek second', next_instruction: '', rider_status: '', call_customer: 'Ruko, bulata hoon', log_outcome: '' };
 
-const apiTools = {
-  tools: TOOL_DEFS.map(([name, description, properties, required]) => ({
+const toolsFor = (defs) => ({
+  tools: defs.map(([name, description, properties, required]) => ({
     name, description, key: 'custom_task', ...(PRE[name] ? { pre_call_message: PRE[name] } : {}),
     parameters: { type: 'object', properties, required },
   })),
-  tools_params: Object.fromEntries(TOOL_DEFS.map(([name, , properties]) => [name, {
+  tools_params: Object.fromEntries(defs.map(([name, , properties]) => [name, {
     method: 'POST', url: `${PUBLIC_URL}/tools/${name}`,
     param: Object.fromEntries(Object.keys(properties).map((k) => [k, `%(${k})s`])),
     api_token: `Bearer ${TOOL_TOKEN}`, headers: { 'ngrok-skip-browser-warning': '1' },
   }])),
-};
-
+});
+const apiTools = toolsFor(TOOL_DEFS);
 // ---------- agents ----------
 const agentBody = ({ name, welcome, prompt, tools, terminate = 600 }) => ({
   agent_config: {
@@ -90,6 +106,7 @@ const guidePrompt = GUIDE_PROMPT.replace('{visit_hint}', '. If the call context 
   + '\n\nCall context: customer_name = {customer_name}; visit_id = {visit_id}.';
 const guideId = await upsert('BOLNA_GUIDE_AGENT_ID', agentBody({ name: 'ToTheDoor guide', welcome: GUIDE_WELCOME, prompt: guidePrompt, tools: apiTools }));
 const alertId = await upsert('BOLNA_ALERT_AGENT_ID', agentBody({ name: 'ToTheDoor customer alert', welcome: 'Hello, {customer_name}?', prompt: ALERT_PROMPT, terminate: 90 }));
+const calibId = await upsert('BOLNA_CALIB_AGENT_ID', agentBody({ name: 'ToTheDoor teach the door', welcome: CALIB_WELCOME, prompt: CALIB_PROMPT + '\n\nCall context: customer_name = {customer_name}; door_id = {door_id}.', tools: toolsFor(CALIB_DEFS), terminate: 600 }));
 writeFileSync('.env', env);
 
 // read back and confirm tools are attached and point at PUBLIC_URL
@@ -99,3 +116,5 @@ console.log('guide tools:', tc.api_tools.tools.map((t) => t.name).join(', '));
 console.log('tool urls ok:', Object.values(tc.api_tools.tools_params).every((p) => p.url.startsWith(PUBLIC_URL)));
 console.log('voice:', tc.synthesizer.provider_config.voice, '| asr:', tc.transcriber.provider, tc.transcriber.model);
 console.log('alert agent ready:', !!alertId);
+const c = await api('/v2/agent/' + calibId);
+console.log('calibrate tools:', (c.agent_config?.tasks || c.tasks)[0].tools_config.api_tools.tools.map((t) => t.name).join(', '));

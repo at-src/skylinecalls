@@ -1,7 +1,7 @@
 // Calibration: the customer teaches the agent the way from a big landmark to their door, in one call. The agent calls
 // these tools as the customer talks; each one adds a piece of the door path and answers with a short fact sheet the
 // agent can say back. When the path is complete, finish() checks it for gaps and saves it as the household's door.
-import { emit, id } from './store.js';
+import { emit, id, load } from './store.js';
 import { getDoor, putDoor } from './doors.js';
 import { findPlace, distance, direction } from './maps.js';
 
@@ -11,6 +11,8 @@ const list = (x) => (Array.isArray(x) ? x : String(x || '').split(/[,;]| and /))
 const num = (x) => (Number.isFinite(Number(x)) && x !== '' && x != null ? Number(x) : null);
 
 export function startCalibration({ customer = 'Sam', door_id = '', near = null } = {}) {
+  // map searches start round the household's home (HSR Layout for the demo)
+  near = near || load('home', null) || { lat: 12.9128, lng: 77.6374 };
   const s = { id: id('cal'), customer, door_id, near, anchor: null, steps: [], door: null, fallback: null, started: Date.now() };
   sessions.set(s.id, s);
   emit('calib.started', { calibration: s.id, customer });
