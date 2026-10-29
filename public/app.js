@@ -14,6 +14,7 @@ let cfg, door, home, city, taught = false;
 let pins = [], riderPin = null, riderStep = -1;
 let expecting = false, callActive = false;
 let callStart = 0, timerId = null, pendingApproval = null, lastNext = null;
+let callKind = 'guide', pendingTarget = null, teaching = null;
 
 boot();
 
@@ -113,7 +114,7 @@ function addPinLocal(v, kind, html, id) {
   pins.push(pin);
   return pin;
 }
-const PRI = { rider: 0, home: 1, now: 2, anchor: 3, stop: 4, hub: 5 };
+const PRI = { callout: 0, rider: 0, home: 1, now: 2, anchor: 3, stop: 4, hub: 5 };
 function priority(p) {
   if (p.kind !== 'stop') return PRI[p.kind] ?? 6;
   if (p.node.classList.contains('now')) return PRI.now;
@@ -197,8 +198,11 @@ function endCall() {
 }
 function line(role, text) {
   clearEmpty();
-  const m = el('div', 'msg ' + role, `<span class="by">${role === 'rider' ? 'Rider' : 'Home'}</span><div class="b">${esc(text)}</div>`);
+  const by = role === 'rider' ? 'Rider' : role === 'customer' ? 'Sam' : callKind === 'calibration' ? 'ToTheDoor' : 'Home';
+  const m = el('div', 'msg ' + role, `<span class="by">${by}</span><div class="b">${esc(text)}</div>`);
   $('#stream').append(m); scroll();
+  // a target the agent was told to send him to gets marked in the agent's next line
+  if (role === 'agent' && pendingTarget) { markWords(m.querySelector('.b'), pendingTarget.label, 'target', pendingTarget.top); pendingTarget = null; }
   const w = $('#wave'); w.className = 'wave talk ' + role; clearTimeout(w._t); w._t = setTimeout(() => (w.className = 'wave'), Math.min(4000, 700 + text.length * 45));
 }
 function think(html, kind = '') { const t = el('div', 'think ' + kind, `<span>${html}</span>`); $('#stream').append(t); scroll(); }
@@ -218,6 +222,11 @@ function reasonFor(tool, out, args) {
   if (tool === 'check_approval') return out.approved ? ['<b>Sam allowed</b> · guiding now', 'ok'] : ['<b>Not approved</b> · ending politely', 'bad'];
   if (tool === 'call_customer') return ['<b>Ringing Sam</b> · fallback ready: shoe rack + photo', ''];
   if (tool === 'log_outcome') return [`<b>Delivered</b> · ${esc(args?.result || '')}`, 'ok'];
+  if (tool === 'save_anchor') return [`<b>Landmark found on the map</b> · ${esc(args?.name || '')}`, 'ok'];
+  if (tool === 'save_step') { const n = say.match(/Step (\d+) saved/); return [`<b>Step ${n ? n[1] : ''} saved</b> · ends at ${esc(args?.landmark || '')}`, 'ok']; }
+  if (tool === 'save_door') return [`<b>Door saved</b> · ${esc(args?.floor || '')} floor ${esc(args?.side || '')}, ${esc(args?.action || '')}`, 'ok'];
+  if (tool === 'save_fallback') return [`<b>If nobody opens</b> · ${esc(args?.if_no_answer || '')}`, 'ok'];
+  if (tool === 'finish_calibration') return out.complete ? [`<b>Door path saved</b> · checked, no gaps`, 'ok'] : [`<b>Gaps</b> · ${esc((out.gaps || []).join('; '))}`, 'bad'];
   if (tool === 'next_instruction' || tool === 'rider_status') {
     const heard = args?.seen ? `heard <b>"${esc(args.seen)}"</b>` : 'checked his position';
     const step = say.match(/Next step \((\d+) of (\d+)\)/);
@@ -228,6 +237,83 @@ function reasonFor(tool, out, args) {
   return [esc(tool), ''];
 }
 
+// ======================= the conversation, on the map =======================
+// What the call points at lights up on the map (city.highlight), gets a callout over it, and is underlined in the
+// transcript; clicking the underlined words looks there.
+const callouts = {};
+function clearCallouts() { for (const k of Object.keys(callouts)) { const p = callouts[k]; p.node.remove(); pins = pins.filter((x) => x !== p); delete callouts[k]; } }
+async function spotAt(lat, lng, kind) {
+  if (city.highlight) return city.highlight(lat, lng, kind);
+  const v = city.local(lat, lng); v.y = 14; return v;
+}
+async function callout(kind, lat, lng, title, sub) {
+  const top = await spotAt(lat, lng, kind);
+  if (callouts[kind]) { callouts[kind].node.remove(); pins = pins.filter((x) => x !== callouts[kind]); }
+  const p = addPinLocal(top, 'callout', `<div class="pin-tag call ${kind}">${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</div>`);
+  callouts[kind] = p;
+  return top;
+}
+function markWords(node, label, kind, top) {
+  if (!node || !label) return;
+  const words = String(label).replace(/[’']/g, "'").split(/\s+/).filter((w) => w.length > 2).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, (ch) => '\\' + ch));
+  if (!words.length) return;
+  // the whole label if it's there, else its longest word
+  const html = node.innerHTML;
+  const whole = new RegExp(words.join("[\\s']*"), 'i');
+  const one = new RegExp(words.sort((a, b) => b.length - a.length)[0], 'i');
+  const re = whole.test(html) ? whole : one;
+  if (!re.test(html)) return;
+  node.innerHTML = html.replace(re, (w) => `<mark class="spot ${kind}">${w}</mark>`);
+  const mk = node.querySelector('mark.spot:last-of-type');
+  if (mk && top) mk.onclick = () => city.look(top.clone ? top.clone().setY(0) : new THREE.Vector3(top.x, 0, top.z), 220, 1.0, null, 1.6);
+}
+async function onHighlight(e) {
+  if (e.kind === 'seen') {
+    const top = await callout('seen', e.lat, e.lng, e.label, e.said ? `"${e.said}"` : 'rider is here');
+    const last = [...document.querySelectorAll('#stream .msg.rider .b')].pop();
+    markWords(last, e.label, 'seen', top);
+  } else if (e.kind === 'target') {
+    const top = await callout('target', e.lat, e.lng, 'Next: ' + e.label, 'sending him here');
+    pendingTarget = { label: e.label, top };
+  }
+}
+// ---- teaching the door by voice: the path is drawn stop by stop as Sam describes it
+function beginTeaching() {
+  teaching = { stops: [] };
+  city.setPath([]);
+  pins.filter((p) => p.kind === 'stop').forEach((p) => p.node.remove());
+  pins = pins.filter((p) => p.kind !== 'stop');
+  const r = $('#ribbon'); r.innerHTML = '';
+  r.append(el('div', 'stop now', '<span class="num">…</span><span class="lbl">Learning the way from Sam</span>'));
+  status('Learning the door path', true); tag('Teaching', 'live');
+}
+async function taughtStop(s) {
+  if (!teaching) beginTeaching();
+  teaching.stops.push(s);
+  if (teaching.stops.length > 1) city.setPath(teaching.stops);
+  city.setProgress(teaching.stops.length - 1);
+  const top = await callout('taught', s.lat, s.lng, s.n === 0 ? s.label : `Step ${s.n}: ${cap(s.label)}`, s.n === 0 ? 'starting landmark' : 'just learned');
+  const last = [...document.querySelectorAll('#stream .msg.customer .b')].pop();
+  markWords(last, s.label, 'taught', top);
+  // the ribbon grows as it learns
+  const r = $('#ribbon');
+  r.querySelector('.stop.now')?.remove();
+  r.append(el('div', 'stop done', `<span class="num">${s.n === 0 ? 'S' : s.n}</span><span class="lbl">${esc(cap(s.label))}</span>`));
+  r.append(el('div', 'stop now', '<span class="num">…</span><span class="lbl">listening</span>'));
+  city.look(top.clone ? top.clone().setY(0) : new THREE.Vector3(top.x, 0, top.z), 230, 1.02, null, 2.0);
+}
+function teachDoor(d) {
+  const r = $('#ribbon');
+  r.querySelector('.stop.now')?.remove();
+  r.append(el('div', 'stop home now', `<span class="num">⌂</span><span class="lbl">Door · ${esc(d.floor)} floor ${esc(d.side)}</span>`));
+}
+async function doneTeaching() {
+  try { door = await (await fetch('/api/door')).json(); } catch {}
+  teaching = null;
+  status('Door path learned', false, true); tag('Saved', 'done');
+  // redraw everything from the saved door
+  if (home) { taught = !!door && distKm(home, lastStep()) < 0.4; if (taught) { city.setPath([door.anchor, ...door.steps]); renderRibbon(); riderStep = -1; markRibbon(); } }
+}
 // ======================= guard =======================
 function showGuard(id, caller) { pendingApproval = id; $('#guardSays').textContent = `"${caller}"`; $('#guard').hidden = false; tag('Checking', 'stop'); status('Unknown caller · asking Sam', true); }
 function hideGuard(st) {
@@ -249,11 +335,16 @@ function handle(e) {
     case 'visit.created': setExpecting(true); status(`${cap(e.service)} on the way`, true); refreshExpect(); if (e.source === 'telegram') tg(`Expecting ${cap(e.service)}`, 'sam'); break;
     case 'visit.eta': setExpecting(true); status(`${cap(e.service || 'Delivery')} · about ${e.eta_min} min away`, true); break;
     case 'visit.closed': setExpecting(false); refreshExpect(); if (e.status === 'delivered') { status('Delivered', false, true); tag('Delivered', 'done'); riderStep = $('#ribbon').children.length - 1; markRibbon(); if (home) setTimeout(() => city.look(city.home.clone(), 260, 0.9, null, 2.6), 900); } break;
-    case 'call.started': startCall(e.caller || 'Rider'); break;
+    case 'call.started': callKind = e.kind || 'guide'; clearCallouts(); city.clearHighlights?.(); startCall(e.caller || 'Rider'); if (callKind === 'calibration') beginTeaching(); break;
     case 'call.line': line(e.role, e.text); break;
     case 'call.ended': endCall(); break;
     case 'tool.call': lastNext = { tool: e.tool, args: e.args }; break;
-    case 'tool.result': { const [h, k] = reasonFor(e.tool, e.out, lastNext?.tool === e.tool ? lastNext.args : null); think(h, k); break; }
+    case 'tool.result': { const [h, k] = reasonFor(e.tool, e.out, e.args || (lastNext?.tool === e.tool ? lastNext.args : null)); think(h, k); break; }
+    case 'map.highlight': onHighlight(e); break;
+    case 'calib.anchor': taughtStop({ lat: e.lat, lng: e.lng, label: e.name, n: 0 }); break;
+    case 'calib.step': taughtStop({ lat: e.lat, lng: e.lng, label: e.label, n: e.n }); break;
+    case 'calib.door': teachDoor(e); break;
+    case 'calib.done': doneTeaching(); break;
     case 'rider.placed': placeRider(e, e.step, e.label); break;
     case 'rider.position': if (e.mode !== 'sim') placeRider(e, -1, 'live location'); break;
     case 'notify': tg(e.text); break;
@@ -333,6 +424,10 @@ function bindUi() {
     $('#playDemo').disabled = true;
     if (!taught) await setHome({ lat: lastStep().lat, lng: lastStep().lng, label: "Sam's home" });
     await fetch('/api/demo/replay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  };
+  $('#teachDemo').onclick = async () => {
+    if (!home) await setHome({ lat: lastStep().lat, lng: lastStep().lng, label: "Sam's home" });
+    await fetch('/api/demo/teach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   };
   $('#callMe').onclick = async () => {
     const hint = $('#callHint'); hint.textContent = 'Starting a delivery and ringing your phone…';

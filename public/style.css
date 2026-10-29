@@ -243,3 +243,20 @@ p { text-wrap: pretty; }
 
 /* the pre-built 3D city, in an iframe under the pins */
 #globe iframe.map3d { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #2a3146; }
+
+/* the customer teaching the way (calibration call) */
+.msg.customer { align-self: flex-end; align-items: flex-end; }
+.msg.customer .b { background: rgba(245, 184, 74, 0.12); color: #fbe3b8; border-bottom-right-radius: 4px; }
+/* words in the transcript that the map has lit up: click to look there */
+mark.spot { background: none; color: inherit; border-bottom: 1.5px solid currentColor; padding: 0 1px; cursor: pointer; pointer-events: auto; border-radius: 2px; transition: background 200ms var(--ease); }
+mark.spot.seen { color: #9fd2ff; }
+mark.spot.target { color: var(--amber); }
+mark.spot.taught { color: #8ee8b0; }
+mark.spot:hover { background: rgba(255, 255, 255, 0.08); }
+/* callouts on the map for what the conversation points at */
+.pin.callout { z-index: 4; }
+.pin-tag.call { top: -6px; font-size: 12px; font-weight: 500; }
+.pin-tag.call.seen { color: #dcedff; border-color: rgba(108, 182, 255, 0.55); box-shadow: 0 0 18px rgba(108, 182, 255, 0.25); }
+.pin-tag.call.target { color: #ffe2a8; border-color: rgba(245, 184, 74, 0.6); box-shadow: 0 0 18px rgba(245, 184, 74, 0.22); }
+.pin-tag.call.taught { color: #c9f5d8; border-color: rgba(63, 214, 138, 0.55); box-shadow: 0 0 18px rgba(63, 214, 138, 0.22); }
+.pin-tag.call small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; }

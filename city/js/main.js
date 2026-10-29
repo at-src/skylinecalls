@@ -204,7 +204,7 @@ async function initApp() {
   await precompileShaders();
   markInit('compile');
 
-  const bridge = startBridge({ scene, camera, orbit, applyPreset, weather });
+  const bridge = startBridge({ scene, camera, orbit, applyPreset, weather, footprints: cityBlocks.allBlocks[0].footprints });
   let lastTime = performance.now();
   let elapsed = 0;
   let warmedUp = false;

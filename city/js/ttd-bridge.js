@@ -7,7 +7,7 @@ const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 // the dashboard's hour -> the nearest lighting preset
 const presetFor = (h) => (h < 5 || h >= 20 ? 'midnight' : h < 6.3 ? 'twilight' : h < 8.5 ? 'golden' : h < 16.5 ? 'midday' : h < 18.4 ? 'golden' : 'twilight');
 
-export function startBridge({ scene, camera, orbit, applyPreset, weather }) {
+export function startBridge({ scene, camera, orbit, applyPreset, weather, footprints = [] }) {
   const fx = new THREE.Group();
   fx.name = 'ToTheDoor';
   scene.add(fx);
@@ -98,6 +98,7 @@ export function startBridge({ scene, camera, orbit, applyPreset, weather }) {
   orbit.addEventListener('start', () => (tween = null));
 
   const night = buildNightLights(fx);
+  const marks = buildHighlights(fx, footprints);
 
   window.addEventListener('message', (e) => {
     const m = e.data;
@@ -111,6 +112,8 @@ export function startBridge({ scene, camera, orbit, applyPreset, weather }) {
     else if (m.type === 'expecting') pulse.expecting = !!m.on;
     else if (m.type === 'autoRotate') orbit.autoRotate = !!m.on;
     else if (m.type === 'rain') weather.setRain(m.amount || 0);
+    else if (m.type === 'highlight') { const at = marks.add(m.x, m.z, m.kind, m.id); post({ type: 'highlighted', id: m.id, ...at }); }
+    else if (m.type === 'clearHighlights') marks.clear();
     else if (m.type === 'hour') { applyPreset(presetFor(m.hour)); night.setHour(m.hour); }
   });
   window.addEventListener('ttd-rendered', () => post({ type: 'rendered' }), { once: true });
@@ -124,6 +127,7 @@ export function startBridge({ scene, camera, orbit, applyPreset, weather }) {
       this._t = now;
       elapsed += dt;
       night.update(Math.min(dt, 0.05));
+      marks.update(dt, elapsed);
       if (ring) {
         const ph = (elapsed * (pulse.expecting ? 0.6 : 0.4)) % 1;
         ring.scale.setScalar(6 + ph * (pulse.expecting ? 42 : 24));
@@ -154,6 +158,7 @@ export function startBridge({ scene, camera, orbit, applyPreset, weather }) {
         camera.position.copy(orbit.target).add(new THREE.Vector3().setFromSpherical(s));
         if (w.t >= 1) tween = null;
       }
+      fx.updateMatrixWorld(true);
       // the camera, for the dashboard's pins
       post({
         type: 'cam', p: camera.position.toArray(), t: orbit.target.toArray(), fov: camera.fov, aspect: camera.aspect,
@@ -328,6 +333,121 @@ function buildNightLights(fx) {
         }
       }
       heads.instanceMatrix.needsUpdate = tails.instanceMatrix.needsUpdate = true;
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// What the conversation points at, lit up on the map. 'seen' (blue): a place the caller says he can see, where he is
+// now. 'target' (amber): where the agent is sending him next. 'taught' (green): a stop the customer has just described
+// while teaching the way. The building on that spot gets a glowing shell and a ring pulses on the ground round it; a
+// spot with no building (a gate, a lane) gets the ring and a short light post. Older marks fade to a faint trace, so
+// the last few stay readable without cluttering the map.
+const MARK_COLOURS = { seen: [0.25, 0.75, 1.9], target: [1.9, 1.0, 0.22], taught: [0.3, 1.6, 0.7] };
+function buildHighlights(fx, footprints) {
+  // footprints by 50 m cell, for finding the building at a spot
+  const CELL = 50, grid = new Map();
+  const key = (i, j) => i * 100003 + j;
+  footprints.forEach((f, k) => {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (let i = 0; i < f.pts.length; i += 2) { x0 = Math.min(x0, f.pts[i]); x1 = Math.max(x1, f.pts[i]); z0 = Math.min(z0, f.pts[i + 1]); z1 = Math.max(z1, f.pts[i + 1]); }
+    f.bb = [x0, x1, z0, z1];
+    for (let i = Math.floor(x0 / CELL); i <= Math.floor(x1 / CELL); i++) for (let j = Math.floor(z0 / CELL); j <= Math.floor(z1 / CELL); j++) {
+      const kk = key(i, j); if (!grid.has(kk)) grid.set(kk, []); grid.get(kk).push(k);
+    }
+  });
+  const inside = (x, z, p) => { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) { if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) c = !c; } return c; };
+  const edgeDist = (x, z, p) => { let d = Infinity; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) { const ax = p[j], az = p[j + 1], bx = p[i], bz = p[i + 1]; const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)); d = Math.min(d, Math.hypot(x - ax - t * dx, z - az - t * dz)); } return d; };
+  // the building at (x, z): the one it stands in, else the nearest within 18 m (shops are mapped a few metres off)
+  const buildingAt = (x, z) => {
+    let best = null, bestD = 18;
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (const k of grid.get(key(Math.floor(x / CELL) + di, Math.floor(z / CELL) + dj)) || []) {
+      const f = footprints[k];
+      if (inside(x, z, f.pts)) return f;
+      const d = edgeDist(x, z, f.pts);
+      if (d < bestD) { bestD = d; best = f; }
+    }
+    return best;
+  };
+
+  const live = [];
+  const group = new THREE.Group();
+  group.name = 'Highlights';
+  fx.add(group);
+  function shell(f, c, strength) {
+    // the footprint pushed out 0.6 m and raised 0.8 m above the roof, open at the bottom
+    let cx = 0, cz = 0; const n = f.pts.length / 2;
+    for (let i = 0; i < n; i++) { cx += f.pts[i * 2]; cz += f.pts[i * 2 + 1]; }
+    cx /= n; cz /= n;
+    const pos = [], uvs = [], top = f.h + 0.8;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const grow = (x, z) => { const dx = x - cx, dz = z - cz, L = Math.hypot(dx, dz) || 1; return [x + (dx / L) * 0.6, z + (dz / L) * 0.6]; };
+      const [ax, az] = grow(f.pts[i * 2], f.pts[i * 2 + 1]), [bx, bz] = grow(f.pts[j * 2], f.pts[j * 2 + 1]);
+      pos.push(ax, 0, az, bx, 0, bz, bx, top, bz, ax, 0, az, bx, top, bz, ax, top, az);
+      uvs.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    // brightest along the roof line and the ground, a soft wash between
+    const v = uv().y;
+    m.colorNode = vec3(...c).mul(pow(v, 6.0).mul(1.4).add(pow(float(1).sub(v), 8.0).mul(0.6)).add(0.12)).mul(strength);
+    m.opacityNode = float(1);
+    const mesh = new THREE.Mesh(g, m);
+    mesh.renderOrder = 8;
+    return { mesh, cx, cz, r: Math.max(6, Math.hypot(f.bb[1] - f.bb[0], f.bb[3] - f.bb[2]) / 2), h: f.h };
+  }
+  function add(x, z, kind = 'seen', idTag = '') {
+    const c = MARK_COLOURS[kind] || MARK_COLOURS.seen;
+    // the newest of each kind is the bright one; the ones before fade to a trace
+    for (const l of live) if (l.kind === kind) l.fadeTo = 0.18;
+    const strength = uniform(0), ringA = uniform(0);
+    const f = buildingAt(x, z);
+    const item = { kind, idTag, strength, ringA, t: 0, fadeTo: 1, level: 0, parts: [] };
+    let cx = x, cz = z, r = 7, h = 0;
+    if (f) {
+      const s = shell(f, c, strength);
+      item.parts.push(s.mesh); cx = s.cx; cz = s.cz; r = s.r; h = s.h;
+    } else {
+      // no building: a short post of light
+      const pg = new THREE.CylinderGeometry(0.25, 0.9, 16, 12, 1, true); pg.translate(0, 8, 0);
+      const pm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+      pm.colorNode = vec3(...c).mul(pow(float(1).sub(uv().y), 2.5)).mul(strength);
+      pm.opacityNode = float(1);
+      const post = new THREE.Mesh(pg, pm); post.position.set(x, 0, z); item.parts.push(post);
+    }
+    const rm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    rm.colorNode = vec3(...c).mul(ringA);
+    rm.opacityNode = float(1);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 64).rotateX(-Math.PI / 2), rm);
+    ring.position.set(cx, 0.6, cz);
+    ring.renderOrder = 8;
+    item.ring = ring; item.r = r; item.h = h; item.x = cx; item.z = cz;
+    item.parts.push(ring);
+    for (const p of item.parts) { p.frustumCulled = false; p.matrixAutoUpdate = true; group.add(p); }
+    live.push(item);
+    // keep the last eight
+    while (live.length > 8) { const old = live.shift(); for (const p of old.parts) group.remove(p); }
+    return { x: cx, z: cz, h };
+  }
+  function clear() { for (const l of live) for (const p of l.parts) group.remove(p); live.length = 0; }
+  return {
+    add, clear,
+    update(dt, t) {
+      for (const l of live) {
+        l.t += dt;
+        // ease towards its level: in quickly when new, slowly down to a trace when superseded
+        l.level += (l.fadeTo - l.level) * Math.min(1, dt * (l.fadeTo > l.level ? 4 : 1.2));
+        const beat = l.fadeTo === 1 ? 0.75 + 0.25 * Math.sin(t * 3.2) : 1;
+        l.strength.value = l.level * beat;
+        const ph = (t * 0.7 + l.x * 0.01) % 1;
+        l.ring.scale.setScalar(l.r * (1.05 + ph * 1.6));
+        l.ring.updateMatrix(); l.ring.updateMatrixWorld();
+        l.ringA.value = (1 - ph) * l.level * 0.9;
+      }
+      group.updateMatrixWorld(true);
     }
   };
 }

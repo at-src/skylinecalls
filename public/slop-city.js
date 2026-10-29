@@ -59,6 +59,7 @@ export class SlopCity {
       this.applyTime(true);
       this._resolveReady();
     } else if (m.type === 'rendered') this._resolveRendered();
+    else if (m.type === 'highlighted') { const r = this._marks?.get(m.id); if (r) { this._marks.delete(m.id); r(new THREE.Vector3(m.x, (m.h || 0) + 6, m.z)); } }
     else if (m.type === 'homeH') this.homeH = m.h;
     else if (m.type === 'cam') {
       this.camera.position.fromArray(m.p);
@@ -137,6 +138,14 @@ export class SlopCity {
     await new Promise((r) => setTimeout(r, 60));
   }
   setPath(points) { this.send({ type: 'path', pts: points.map((p) => { const v = this.local(p.lat, p.lng); return [v.x, v.z]; }) }); }
+  // light up what the conversation points at: kind 'seen' (where the caller is), 'target' (where he's sent next),
+  // 'taught' (a stop the customer just described). Resolves with the spot's top, for a pin.
+  highlight(lat, lng, kind = 'seen') {
+    const v = this.local(lat, lng), id = Math.random().toString(36).slice(2, 8);
+    this.send({ type: 'highlight', x: v.x, z: v.z, kind, id });
+    return new Promise((res) => { (this._marks ||= new Map()).set(id, res); setTimeout(() => { if (this._marks.has(id)) { this._marks.delete(id); res(new THREE.Vector3(v.x, 12, v.z)); } }, 1500); });
+  }
+  clearHighlights() { this.send({ type: 'clearHighlights' }); }
   setProgress(step) { this.send({ type: 'progress', step }); }
   placeRider(lat, lng) {
     const v = this.local(lat, lng); v.y = 4;
