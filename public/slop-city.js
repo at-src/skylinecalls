@@ -128,10 +128,10 @@ export class SlopCity {
     return new THREE.Vector3(e * c - n * s, 0, -(e * s + n * c));
   }
 
-  async build(_data, home) {
+  async build(_data, home, { marker = true } = {}) {
     await this.ready;
     this.home = this.local(home.lat, home.lng);
-    this.send({ type: 'home', x: this.home.x, z: this.home.z });
+    if (marker) this.send({ type: 'home', x: this.home.x, z: this.home.z });
     this._arrive = true;
     // keep the dashboard's veil up until the city is on screen (and the home's height is known, for the pins)
     await this.rendered;

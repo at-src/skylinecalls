@@ -27,6 +27,9 @@ async function boot() {
   bindUi();
   listen();
   refreshExpect();
+  const role = localStorage.getItem('ttd-role');
+  if (!role) return showRole();
+  if (role.startsWith('sender:')) return startSender(role.slice(7));
   const saved = cfg.home || JSON.parse(localStorage.getItem('ttd-home') || 'null');
   if (saved) await setHome(saved, false); else showOnboard();
 }
@@ -54,7 +57,7 @@ function useCityFor(ll) {
 const lastStep = () => (door?.steps?.length ? door.steps[door.steps.length - 1] : door.anchor);
 function distKm(a, b) { const R = 6371, d = (x) => (x * Math.PI) / 180; const dl = d(b.lat - a.lat), dg = d(b.lng - a.lng); return 2 * R * Math.asin(Math.sqrt(Math.sin(dl / 2) ** 2 + Math.cos(d(a.lat)) * Math.cos(d(b.lat)) * Math.sin(dg / 2) ** 2)); }
 
-async function setHome(h, persist = true) {
+async function setHome(h, persist = true, { sender = false } = {}) {
   home = { lat: h.lat, lng: h.lng, label: h.label || 'Home' };
   if (persist) {
     localStorage.setItem('ttd-home', JSON.stringify(home));
@@ -70,8 +73,9 @@ async function setHome(h, persist = true) {
     if (data.error) throw new Error(data.error);
   } catch (e) { veil(true, "Couldn't load map data for this spot. Try the demo home."); return; }
   useCityFor(home);
-  await city.build(data, home);
+  await city.build(data, home, { marker: !sender });
   clearPins();
+  if (sender) { (data.landmarks || []).slice(0, 14).forEach((l) => addPinLocal(fromBake(data, l, 30), 'hub', `<div class="pin-tag hub">${esc(l.name.replace(/&amp;/g, '&'))}</div>`)); const H = city.home; city.camera.position.set(H.x + 900, 1500, H.z + 1500); city.controls.target.set(H.x, 0, H.z); city.look(new THREE.Vector3(H.x + 180, 0, H.z - 420), 760, 0.9, Math.PI * 0.2, 4.2); setTimeout(() => veil(false), 350); window.dispatchEvent(new Event('ttd-home')); return; }
   addPin(home, 'home', `<div class="pin-home"><span></span></div><div class="pin-tag">${esc(home.label)}</div>`, null, 'home');
   if (taught) {
     const stops = [door.anchor, ...door.steps];
@@ -89,6 +93,7 @@ async function setHome(h, persist = true) {
   city.look(new THREE.Vector3(H.x, 0, H.z), 300, 1.12, Math.PI * 0.2, 4.2);
   setTimeout(() => veil(false), 350);
   window.dispatchEvent(new Event('ttd-home'));
+  renderConsent();
   if (!callActive) status(expecting ? 'Someone is on the way' : 'Watching the door', expecting);
 }
 
@@ -155,11 +160,12 @@ function markRibbon() {
 }
 
 // ======================= rider =======================
-function placeRider(p, step, label) {
+function placeRider(p, step, label, { frame = true } = {}) {
   const v = city.placeRider(p.lat, p.lng);
   if (!riderPin) { riderPin = { node: el('div', 'pin rider', '<div class="pin-tag rider"></div>'), kind: 'rider', world: v }; $('#globe').appendChild(riderPin.node); }
   riderPin.node.querySelector('.pin-tag').textContent = label ? `Rider · ${label}` : 'Rider';
   if (typeof step === 'number' && step >= 0) { riderStep = step; markRibbon(); }
+  if (!frame) return;
   // frame rider and home together
   const H = city.home, mid = new THREE.Vector3((v.x + H.x) / 2, 0, (v.z + H.z) / 2);
   const d = Math.hypot(v.x - H.x, v.z - H.z);
@@ -314,6 +320,108 @@ async function doneTeaching() {
   // redraw everything from the saved door
   if (home) { taught = !!door && distKm(home, lastStep()) < 0.4; if (taught) { city.setPath([door.anchor, ...door.steps]); renderRibbon(); riderStep = -1; markRibbon(); } }
 }
+// ======================= receiving or sending =======================
+// first run: the neighbourhood builds behind the question
+async function showRole() {
+  if (!city.home) await setHome({ lat: lastStep().lat, lng: lastStep().lng, label: 'HSR Layout' }, false, { sender: true });
+  $('#onboard').hidden = false; $('#roleCard').hidden = false; $('#senderCard').hidden = true; $('#homeCard').hidden = true; veil(false); status('Welcome', false);
+}
+let SENDERS = [], sender = null;
+const fleet = new Map(); // order -> { o, pin, drop, cur, target }
+async function pickSender() {
+  SENDERS = await (await fetch('/api/senders')).json();
+  const b = $('#brands'); b.innerHTML = '';
+  for (const x of SENDERS) {
+    const btn = el('button', 'brand-pick', `<i style="background:${x.colour}">${esc(x.name[0])}</i><span><b>${esc(x.name)}</b><small>${esc(x.kind)}</small></span>`);
+    btn.onclick = () => { localStorage.setItem('ttd-role', 'sender:' + x.id); startSender(x.id); };
+    b.append(btn);
+  }
+  $('#roleCard').hidden = true; $('#senderCard').hidden = false;
+}
+async function startSender(id) {
+  sender = await (await fetch('/api/sender?id=' + encodeURIComponent(id))).json();
+  if (sender.error) { localStorage.removeItem('ttd-role'); return showRole(); }
+  document.body.classList.add('role-sender');
+  $('#onboard').hidden = true;
+  $('#roleLabel').textContent = 'Sending as';
+  $('#household').textContent = sender.name;
+  $('#senderPanel').hidden = false;
+  $('#changeHome').textContent = 'Switch role';
+  $('#guideNumber').textContent = sender.guide_number;
+  $('#apiKey').textContent = sender.api_key;
+  const e = $('#empty');
+  if (e) { e.querySelector('h3').textContent = 'No rider needs help right now'; e.querySelector('p').textContent = `When a ${sender.name} rider can't find the door and taps Call customer, ToTheDoor answers. The call shows up here, and on the map.`; e.querySelector('.actions').hidden = true; $('#consent').hidden = true; }
+  document.querySelector('.phone-head').firstChild.nextSibling.textContent = "Sam's phone · a receiver";
+  renderSenderStats(sender.stats);
+  renderOrders();
+  $('#ribbon').parentElement.hidden = true;
+  await setHome({ lat: lastStep().lat, lng: lastStep().lng, label: 'HSR Layout' }, false, { sender: true });
+  status(`${sender.name} · watching deliveries`, false);
+}
+function renderSenderStats(st) {
+  const fmt = (n) => n.toLocaleString('en-IN');
+  const m = Math.floor(st.avg_stuck_to_door_s / 60), sec = st.avg_stuck_to_door_s % 60;
+  $('#senderStats').innerHTML = [[fmt(st.deliveries), 'Deliveries today'], [fmt(st.guided), 'Guided to the door'], [fmt(st.saved), 'Saved from failing'], [`${m}:${String(sec).padStart(2, '0')}`, 'Stuck to door, avg']]
+    .map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
+}
+let statsT = null;
+const refreshStats = () => { clearTimeout(statsT); statsT = setTimeout(async () => { if (!sender) return; const s2 = await (await fetch('/api/sender?id=' + sender.id)).json(); renderSenderStats(s2.stats); }, 400); };
+const ST = { assigned: 'Assigned', picked_up: 'Picked up', en_route: 'On the way', arrived: 'At the door', stuck: "Can't find it", guiding: 'ToTheDoor guiding', delivered: 'Delivered', failed: 'Failed' };
+function renderOrders() {
+  const ol = $('#orders'); ol.innerHTML = '';
+  if (!fleet.size) { ol.append(el('li', 'none', 'No riders out. Run a delivery shift to see them on the map.')); return; }
+  const rank = (o) => (o.status === 'guiding' || o.status === 'stuck' ? 0 : o.status === 'delivered' ? 2 : 1);
+  for (const f of [...fleet.values()].reverse().sort((x, y) => rank(x.o) - rank(y.o))) {
+    const o = f.o, ready = !!o.guided;
+    const li = el('li', 'order' + (o.status === 'guiding' ? ' guided' : ''), `<span class="who"><b>${esc(o.rider.name)}</b> → ${esc(o.receiver.name)}</span><span class="st ${o.status}">${ST[o.status] || o.status}</span><span class="to">${esc(o.order_id)} · ${esc(o.receiver.area || 'HSR Layout')}</span><span class="tagline ${ready ? 'ready' : 'ask'}">${ready ? 'Doorstep directions ready' : 'Asked in the app to add doorstep directions'}</span>`);
+    li.onclick = () => f.cur && city.look(f.cur.clone().setY(0), 260, 1.0, null, 1.6);
+    ol.append(li);
+  }
+}
+function onOrder(e) {
+  if (!sender || e.sender !== sender.id) return;
+  if (e.type === 'order.created') {
+    const o = { id: e.order, order_id: e.order_id, receiver: e.receiver, rider: e.rider, status: 'assigned', guided: e.guided };
+    const r = e.receiver;
+    const drop = Number.isFinite(r.lat) ? addPin({ lat: r.lat, lng: r.lng }, 'drop', `<div class="drop-dot"></div><div class="pin-tag">${esc(r.name)}</div>`) : null;
+    if (drop && e.guided) drop.node.classList.add('ready');
+    fleet.set(e.order, { o, drop, pin: null, cur: null, target: null });
+    renderOrders();
+  } else if (e.type === 'order.location') {
+    const f = fleet.get(e.order); if (!f) return;
+    const v = city.local(e.lat, e.lng); v.y = 6;
+    if (!f.pin) {
+      f.pin = addPinLocal(v.clone(), 'fleet', `<div class="fleet-dot" style="background:${SENDERS.find((x) => x.id === sender.id)?.colour || sender.colour}"></div><div class="pin-tag">${esc(f.o.rider.name)}</div>`);
+      f.cur = v.clone();
+    }
+    f.target = v;
+    if (f.o.status !== e.status) { f.o.status = e.status; renderOrders(); }
+  } else if (e.type === 'order.status') {
+    const f = fleet.get(e.order); if (!f) return;
+    f.o.status = e.status;
+    if (f.pin) { f.pin.node.classList.toggle('stuck', e.status === 'stuck'); f.pin.node.classList.toggle('delivered', e.status === 'delivered'); }
+    // ToTheDoor takes the call: this rider's door path appears, and the call view follows him from here
+    if (e.status === 'guiding') {
+      if (f.pin) f.pin.node.hidden = true;
+      taught = true; city.setPath([door.anchor, ...door.steps]);
+      $('#ribbon').parentElement.hidden = false; renderRibbon();
+    }
+    renderOrders(); refreshStats();
+  }
+}
+// riders glide between their location pings
+addFrameHook(() => { for (const f of fleet.values()) if (f.pin && f.target) { f.cur.lerp(f.target, 0.06); f.pin.world.copy(f.cur); } });
+// ---- receiver: which senders may guide riders with this door path
+async function renderConsent() {
+  const box = $('#consent'); if (!box) return;
+  const [list, c] = await Promise.all([fetch('/api/senders').then((r) => r.json()), fetch('/api/consent').then((r) => r.json())]);
+  box.innerHTML = '<span class="lbl">Riders guided with your door path</span>';
+  for (const x of list) {
+    const b = el('button', '', esc(x.name)); b.setAttribute('aria-pressed', String(c[x.id] !== false));
+    b.onclick = async () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', String(on)); await fetch('/api/consent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sender: x.id, allowed: on }) }); };
+    box.append(b);
+  }
+}
 // ======================= guard =======================
 function showGuard(id, caller) { pendingApproval = id; $('#guardSays').textContent = `"${caller}"`; $('#guard').hidden = false; tag('Checking', 'stop'); status('Unknown caller · asking Sam', true); }
 function hideGuard(st) {
@@ -341,12 +449,15 @@ function handle(e) {
     case 'tool.call': lastNext = { tool: e.tool, args: e.args }; break;
     case 'tool.result': { const [h, k] = reasonFor(e.tool, e.out, e.args || (lastNext?.tool === e.tool ? lastNext.args : null)); think(h, k); break; }
     case 'map.highlight': onHighlight(e); break;
+    case 'order.created': case 'order.location': case 'order.status': onOrder(e); break;
     case 'calib.anchor': taughtStop({ lat: e.lat, lng: e.lng, label: e.name, n: 0 }); break;
     case 'calib.step': taughtStop({ lat: e.lat, lng: e.lng, label: e.label, n: e.n }); break;
     case 'calib.door': teachDoor(e); break;
     case 'calib.done': doneTeaching(); break;
     case 'rider.placed': placeRider(e, e.step, e.label); break;
-    case 'rider.position': if (e.mode !== 'sim') placeRider(e, -1, 'live location'); break;
+    // live GPS (Telegram or a sender's rider app): move the marker, don't swing the camera every ping; a sender's view
+    // shows its riders as the fleet instead
+    case 'rider.position': if (e.mode !== 'sim' && !sender) placeRider(e, -1, 'live location', { frame: !riderPin }); break;
     case 'notify': tg(e.text); break;
     case 'telegram.in': tg(e.text, 'sam'); break;
     case 'approval.requested': showGuard(e.approval, e.caller); break;
@@ -417,7 +528,12 @@ function bindUi() {
   bindClock();
   $('#zin').onclick = () => zoom(0.6);
   $('#zout').onclick = () => zoom(1.6);
-  $('#changeHome').onclick = async () => { localStorage.removeItem('ttd-home'); await fetch('/api/home/clear', { method: 'POST' }); home = null; $('#q').value = ''; $('#results').innerHTML = ''; $('#useLoc').disabled = false; showOnboard(); };
+  $('#pickReceiver').onclick = () => { localStorage.setItem('ttd-role', 'receiver'); $('#roleCard').hidden = true; $('#homeCard').hidden = false; status('Set your home', false); };
+  $('#pickSender').onclick = () => pickSender();
+  $('#backRole').onclick = () => showRole();
+  $('#runShift').onclick = async () => { for (const f of fleet.values()) { f.pin?.node.remove(); f.drop?.node.remove(); pins = pins.filter((p) => p !== f.pin && p !== f.drop); } fleet.clear(); renderOrders(); await fetch('/api/demo/fleet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sender: sender?.id }) }); };
+  $('#changeHome').onclick = async () => {
+    if (sender || !localStorage.getItem('ttd-role')) { localStorage.removeItem('ttd-role'); location.reload(); return; } localStorage.removeItem('ttd-home'); await fetch('/api/home/clear', { method: 'POST' }); home = null; $('#q').value = ''; $('#results').innerHTML = ''; $('#useLoc').disabled = false; showOnboard(); };
   $('#allow').onclick = () => resolve('allowed');
   $('#block').onclick = () => resolve('blocked');
   $('#playDemo').onclick = async () => {
@@ -458,5 +574,5 @@ function bindUi() {
 }
 function setSeg(id) { ['v3d', 'vtop'].forEach((x) => { $('#' + x).classList.toggle('on', x === id); $('#' + x).setAttribute('aria-pressed', x === id); }); }
 function showOnboard() {
-  $('#onboard').hidden = false; veil(false); status('Set your home', false);
+  $('#onboard').hidden = false; $('#roleCard').hidden = true; $('#senderCard').hidden = true; $('#homeCard').hidden = false; veil(false); status('Set your home', false);
 }

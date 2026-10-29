@@ -63,8 +63,23 @@
 
       <!-- onboarding: where is home -->
       <div class="onboard" id="onboard" hidden>
-        <div class="card">
-          <p class="eyebrow">Step 1 of 2</p>
+        <!-- who are you: receiving visits at a door, or sending people to doors -->
+        <div class="card role" id="roleCard">
+          <p class="eyebrow">Welcome to ToTheDoor</p>
+          <h1>Are you receiving or sending?</h1>
+          <p class="sub">The same door path serves both: receivers teach it once, every sender's rider is guided by it.</p>
+          <button class="pick" id="pickReceiver"><b>I'm receiving</b><span>A home, office, hospital or society. Teach your door once; riders and drivers get guided in.</span></button>
+          <button class="pick" id="pickSender"><b>I'm sending</b><span>(business, delivery, cab service) Your riders reach ToTheDoor when they can't find the door.</span></button>
+        </div>
+        <div class="card role" id="senderCard" hidden>
+          <p class="eyebrow">Sending</p>
+          <h1>Which company?</h1>
+          <p class="sub">Connect your rider app with the ToTheDoor SDK: orders, live rider location, and one number for stuck riders.</p>
+          <div class="brands" id="brands"></div>
+          <button class="ghost" id="backRole">Back</button>
+        </div>
+        <div class="card" id="homeCard">
+          <p class="eyebrow">Receiving · step 1 of 2</p>
           <h1>Where's home?</h1>
           <p class="sub">ToTheDoor learns the last 40 metres from here. Riders get the map to your street; it gets them to your door.</p>
           <button class="primary" id="useLoc">
@@ -86,11 +101,24 @@
     <aside class="side" id="call" aria-label="Live call">
       <header class="side-head">
         <div>
-          <p class="eyebrow">Answering as</p>
+          <p class="eyebrow" id="roleLabel">Answering as</p>
           <h2 id="household">Sam's home</h2>
         </div>
         <span class="tag" id="callTag">Idle</span>
       </header>
+
+      <!-- sender: the company's live deliveries -->
+      <section class="sender" id="senderPanel" hidden>
+        <div class="stats" id="senderStats"></div>
+        <div class="orders-head"><span>Live deliveries</span><button class="textlink" id="runShift">Run a delivery shift</button></div>
+        <ol class="orders" id="orders"><li class="none">No riders out. Run a delivery shift to see them on the map.</li></ol>
+        <details class="integ"><summary>Integration</summary>
+          <div class="kv"><span>Number riders call</span><code id="guideNumber"></code></div>
+          <div class="kv"><span>API key</span><code id="apiKey"></code></div>
+          <div class="kv"><span>Endpoints</span><code>POST /v1/orders · /v1/orders/:id/location · /v1/orders/:id/status</code></div>
+          <div class="kv"><span>In your app</span><span>Customers without doorstep directions are asked to add them at checkout.</span></div>
+        </details>
+      </section>
 
       <div class="caller" id="caller" hidden>
         <div class="avatar" id="callerAvatar">Z</div>
@@ -107,6 +135,7 @@
           <h3>Waiting for the next visitor</h3>
           <p>Tell the Telegram bot who's coming. When the rider calls, the conversation appears here.</p>
           <div class="expect" id="expect"></div>
+          <div class="consent" id="consent" aria-label="Senders whose riders may be guided"></div>
           <div class="actions">
             <button class="primary" id="playDemo">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 001.5.86l11-6.5a1 1 0 000-1.72l-11-6.5A1 1 0 008 5.5z"/></svg>
