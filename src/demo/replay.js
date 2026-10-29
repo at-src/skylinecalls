@@ -1,10 +1,10 @@
 // Scripted demo call. Plays a full delivery through the REAL tools (verification, map lookups, door path,
 // customer alert, outcome) so the live screen can be shown without a phone call. The agent's lines are scripted;
 // everything the screen shows about where the rider is comes from the real tool results.
-// No real phone calls are placed during a replay.
+// No real phone calls are placed and nothing is sent to Telegram during a replay: the Telegram side shows on screen.
 import { emit } from '../store.js';
 import { createVisit } from '../visits.js';
-import { flags } from '../notify.js';
+import { flags, notify } from '../notify.js';
 
 const SCRIPT = [
   ['agent', 'Hello?'],
@@ -33,10 +33,15 @@ export const isReplaying = () => running;
 
 export async function replay(TOOLS, { pace = 1 } = {}) {
   if (running) return { ok: false, error: 'already running' };
-  running = true; flags.noCalls = true;
+  running = true; flags.noCalls = true; flags.quiet = true;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms / pace));
   try {
+    // Sam tells the bot an order is on its way: only this rider will be guided
+    emit('telegram.in', { text: 'I have an order with Zepto' });
+    await sleep(900);
     const v = createVisit({ service: 'zepto', source: 'demo' });
+    notify("Got it, expecting Zepto for the next 3 hours. I'll guide only them and message you as they get close.");
+    await sleep(2200);
     emit('call.started', { visit: v.id, demo: true, caller: 'Zepto rider' });
     await sleep(1500);
     for (const [role, text, tool, args] of SCRIPT) {
@@ -52,5 +57,5 @@ export async function replay(TOOLS, { pace = 1 } = {}) {
     }
     emit('call.ended', { visit: v.id, demo: true });
     return { ok: true };
-  } finally { running = false; flags.noCalls = false; }
+  } finally { running = false; flags.noCalls = false; flags.quiet = false; }
 }

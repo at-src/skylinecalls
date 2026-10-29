@@ -4,16 +4,16 @@ import { env } from './env.js';
 import { emit, id } from './store.js';
 
 const dry = () => env.DRY_RUN === '1';
+// set during the scripted demos: never place real calls (noCalls), and keep messages on the screen only (quiet)
+export const flags = { noCalls: false, quiet: false };
 const tg = async (method, body) => {
-  if (dry() || !env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return { ok: false, dry: true };
+  if (dry() || flags.quiet || !env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return { ok: false, dry: true };
   const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, ...body }),
   });
   return r.json();
 };
 
-// set during the scripted demo replay: never place real calls
-export const flags = { noCalls: false };
 
 export function notify(text) {
   emit('notify', { text });
