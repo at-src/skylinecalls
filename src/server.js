@@ -13,6 +13,8 @@ import { startTelegram } from './telegram.js';
 import { findPlace } from './maps.js';
 import { replay } from './demo/replay.js';
 import { teach } from './demo/teach.js';
+import { fleet, stopFleet } from './demo/fleet.js';
+import { SENDERS, GUIDE_NUMBER, senderKeys, senderFor, registerOrder, orderLocation, orderStatus, getOrder, ordersOf, senderStats, consent, setConsent } from './sender.js';
 import { startCalibration, getCalibration, saveAnchor, saveStep, saveDoor, saveFallback, finish } from './calibrate.js';
 import { cityAt } from './city.js';
 
@@ -183,6 +185,18 @@ const routes = {
     if (r.ok && j.execution_id) followCall(v.id, j.execution_id);
     return { ok: r.ok, execution_id: j.execution_id };
   },
+  // ----- sender side: the company's dashboard (a sender's own key lives in its settings) -----
+  'GET /api/senders': () => Object.entries(SENDERS).map(([id, s]) => ({ id, ...s })),
+  'GET /api/sender': (b, q) => {
+    const id = q.get('id') || 'zepto';
+    if (!SENDERS[id]) return { error: 'unknown sender' };
+    return { id, ...SENDERS[id], guide_number: GUIDE_NUMBER, api_key: senderKeys()[id], stats: senderStats(id), orders: ordersOf(id).slice(0, 40) };
+  },
+  'POST /api/demo/fleet': async (b) => { fleet(TOOLS, { sender: SENDERS[b.sender] ? b.sender : 'zepto', pace: Number(b.pace || 1) }).catch((e) => emit('error', { where: 'fleet', message: e.message })); return { ok: true }; },
+  'POST /api/demo/fleet/stop': () => { stopFleet(); return { ok: true }; },
+  // ----- receiver side: which senders may guide riders with the household's door path -----
+  'GET /api/consent': () => consent(),
+  'POST /api/consent': (b) => setConsent(String(b.sender || ''), b.allowed !== false && b.allowed !== 'false'),
   'POST /bolna/webhook': async (b) => { emit('bolna.event', { status: b.status, execution: b.id || b.execution_id, transcript: (b.transcript || '').slice(-600) }); return { ok: true }; },
 };
 
@@ -200,6 +214,21 @@ const server = createServer(async (req, res) => {
       const out = await fn(args);
       emit('tool.result', { tool: tm[1], out });
       return json(res, 200, out);
+    }
+    // sender API (the SDK in the company's rider app): POST /v1/orders, /v1/orders/<id>/location, /v1/orders/<id>/status,
+    // GET /v1/orders/<id>. Authorised by the sender's API key.
+    if (url.pathname.startsWith('/v1/')) {
+      const sender = senderFor(req.headers.authorization);
+      if (!sender) return json(res, 401, { error: 'unknown API key' });
+      const body = req.method === 'POST' ? await readBody(req) : {};
+      if (url.pathname === '/v1/orders' && req.method === 'POST') return json(res, 201, registerOrder(sender, body));
+      const om = url.pathname.match(/^\/v1\/orders\/([a-z0-9_]+)(\/location|\/status)?$/i);
+      const o = om && getOrder(om[1]);
+      if (!o || o.sender !== sender) return json(res, 404, { error: 'no such order' });
+      if (!om[2] && req.method === 'GET') return json(res, 200, o);
+      if (om[2] === '/location' && req.method === 'POST') return json(res, 200, orderLocation(o, body));
+      if (om[2] === '/status' && req.method === 'POST') return json(res, 200, orderStatus(o, body));
+      return json(res, 405, { error: 'method not allowed' });
     }
     // live event stream for the screen
     if (url.pathname === '/api/events' && req.method === 'GET') {

@@ -136,7 +136,32 @@ console.log('\n== 12. Teaching the door by voice (calibration)');
   const hl = recentEvents().filter((e) => e.type === 'map.highlight');
   check('what riders said was lit up on the map', hl.some((e) => e.kind === 'seen') && hl.some((e) => e.kind === 'target'), `${hl.length} highlights`);
 }
-console.log('\n== 13. Tool endpoint is protected');
+console.log('\n== 13. Sender API: a company registers an order and streams the rider location');
+{
+  const info = await (await fetch(base + '/api/sender?id=amazon')).json();
+  const auth = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + info.api_key };
+  const api = async (path, body) => { const r = await fetch(base + path, { method: body ? 'POST' : 'GET', headers: auth, body: body && JSON.stringify(body) }); return { status: r.status, j: await r.json() }; };
+  const bad = await fetch(base + '/v1/orders', { method: 'POST', headers: { Authorization: 'Bearer nope' }, body: '{}' });
+  check('unknown sender key is rejected', bad.status === 401);
+  let r = await api('/v1/orders', { order_id: 'AMZ1', receiver: { name: 'Sam', door_id: 'demo-hsr' }, rider: { name: 'Ramesh' } });
+  check('order to a taught door opens a guided visit', r.status === 201 && r.j.guided && r.j.visit_id && r.j.needs_doorstep_setup === false, JSON.stringify(r.j).slice(0, 160));
+  const oid = r.j.order, vid = r.j.visit_id;
+  const r2 = await api('/v1/orders', { order_id: 'AMZ2', receiver: { name: 'Priya', lat: 12.9175, lng: 77.6455 } });
+  check('order to an untaught door asks the customer to set up directions', r2.j.guided === false && r2.j.needs_doorstep_setup === true);
+  await api(`/v1/orders/${oid}/location`, { lat: 12.91368, lng: 77.6373 });
+  r = await tool('rider_status', { visit_id: vid });
+  check('the rider app location reaches the agent', r.zone === 'near', `${r.distance_to_anchor_m} m from anchor`);
+  r = await tool('verify_caller', { visit_id: vid, service: 'amazon' });
+  check('the sender\'s rider is verified for his own order', r.verified === true, say(r));
+  await post('/api/consent', { sender: 'uber', allowed: false });
+  const uk = (await (await fetch(base + '/api/sender?id=uber')).json()).api_key;
+  const ur = await (await fetch(base + '/v1/orders', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + uk }, body: JSON.stringify({ receiver: { door_id: 'demo-hsr' } }) })).json();
+  check('a sender the household turned off gets no door path', ur.guided === false && ur.consent === false);
+  await api(`/v1/orders/${oid}/status`, { status: 'delivered', note: 'handed over' });
+  const st = await (await fetch(base + '/api/state')).json();
+  check('delivered by the sender closes the visit', !st.visits.some((v) => v.id === vid));
+}
+console.log('\n== 14. Tool endpoint is protected');
 const unauth = await fetch(`${base}/tools/next_instruction`, { method: 'POST', body: '{}' });
 check('request without the token is rejected', unauth.status === 401);
 

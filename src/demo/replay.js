@@ -3,12 +3,12 @@
 // everything the screen shows about where the rider is comes from the real tool results.
 // No real phone calls are placed and nothing is sent to Telegram during a replay: the Telegram side shows on screen.
 import { emit } from '../store.js';
-import { createVisit } from '../visits.js';
+import { createVisit, getVisit } from '../visits.js';
 import { flags, notify } from '../notify.js';
 
 const SCRIPT = [
   ['agent', 'Hello?'],
-  ['rider', 'Haan sir, Zepto se. Aapka order hai.', 'verify_caller', (v) => ({ visit_id: v.id, service: 'zepto' })],
+  ['rider', 'Haan sir, Zepto se. Aapka order hai.', 'verify_caller', (v) => ({ visit_id: v.id, service: v.service })],
   ['agent', 'Haan ji, bolo. Location pe ho abhi?'],
   ['rider', 'Nahi sir, Agara lake ke paas aa gaya, galat mud gaya.', 'next_instruction', (v) => ({ visit_id: v.id, seen: 'Agara lake ke paas' })],
   ['agent', 'Achha. Ring Road pakdo, Silk Board ki taraf. Flyover ke baad 9th Main pe left.'],
@@ -31,21 +31,25 @@ const SCRIPT = [
 let running = false;
 export const isReplaying = () => running;
 
-export async function replay(TOOLS, { pace = 1 } = {}) {
+export async function replay(TOOLS, { pace = 1, visit_id = null, caller = 'Zepto rider', service = 'zepto' } = {}) {
   if (running) return { ok: false, error: 'already running' };
   running = true; flags.noCalls = true; flags.quiet = true;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms / pace));
   try {
-    // Sam tells the bot an order is on its way: only this rider will be guided
-    emit('telegram.in', { text: 'I have an order with Zepto' });
-    await sleep(900);
-    const v = createVisit({ service: 'zepto', source: 'demo' });
-    notify("Got it, expecting Zepto for the next 3 hours. I'll guide only them and message you as they get close.");
-    await sleep(2200);
-    emit('call.started', { visit: v.id, demo: true, caller: 'Zepto rider' });
+    let v = visit_id ? getVisit(visit_id) : null;
+    if (!v) {
+      // Sam tells the bot an order is on its way: only this rider will be guided
+      emit('telegram.in', { text: 'I have an order with Zepto' });
+      await sleep(900);
+      v = createVisit({ service, source: 'demo' });
+      notify("Got it, expecting Zepto for the next 3 hours. I'll guide only them and message you as they get close.");
+      await sleep(2200);
+    }
+    emit('call.started', { visit: v.id, demo: true, caller });
     await sleep(1500);
     for (const [role, text, tool, args] of SCRIPT) {
-      emit('call.line', { visit: v.id, role, text });
+      const said = text.replace(/Zepto/g, v.service.charAt(0).toUpperCase() + v.service.slice(1));
+      emit('call.line', { visit: v.id, role, text: said });
       await sleep(role === 'rider' ? 900 : 600);
       if (tool) {
         const a = args(v);
