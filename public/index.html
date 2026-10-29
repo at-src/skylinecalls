@@ -204,17 +204,6 @@
         </div>
       </div>
 
-      <!-- try it: call the line as someone, or talk to Varun yourself -->
-      <section class="dock" id="dock" aria-label="Try a call">
-        <div class="dock-head"><span>Call the line as</span><button class="textlink" id="teachDemo">Teach the door by voice</button></div>
-        <div class="personas" id="personas"></div>
-        <div class="talk" id="talk">
-          <select id="talkAs" aria-label="Calling from"></select>
-          <button class="primary small" id="talkBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 006 6.92V21h2v-2.08A7 7 0 0019 12h-2z"/></svg><span>Talk to Varun</span></button>
-        </div>
-        <p class="hint" id="callHint"></p>
-      </section>
-
       <!-- unknown delivery caller: approve or block -->
       <div class="guard" id="guard" hidden role="alertdialog" aria-labelledby="guardTitle">
         <div class="guard-top">
@@ -229,6 +218,23 @@
       </div>
 
     </aside>
+
+    <!-- try it: a floating dialer (bottom-left) that holds the demo launchers, off the call panel -->
+    <button class="try-fab" id="tryFab" aria-label="Try a call">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15 15 0 006.6 6.6l2.2-2.2a1 1 0 011-.24 11.4 11.4 0 003.6.58 1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1 11.4 11.4 0 00.58 3.6 1 1 0 01-.24 1z"/></svg>
+      <span>Try a call</span>
+    </button>
+    <section class="try-pop" id="tryPop" hidden aria-label="Try a call">
+      <div class="try-head"><b>Try Varun on the line</b><button class="tg-x" id="tryClose" aria-label="Close">×</button></div>
+      <p class="try-sub">Call the line as one of these, or talk to Varun yourself with your mic.</p>
+      <div class="personas" id="personas"></div>
+      <div class="talk" id="talk">
+        <select id="talkAs" aria-label="Calling from"></select>
+        <button class="primary small" id="talkBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 006 6.92V21h2v-2.08A7 7 0 0019 12h-2z"/></svg><span>Talk to Varun</span></button>
+      </div>
+      <button class="textlink" id="teachDemo">Teach the door by voice</button>
+      <p class="hint" id="callHint"></p>
+    </section>
 
     <!-- connected app: a floating Telegram button (like the Grok dock on X), opens the message feed -->
     <button class="tg-fab" id="tgFab" aria-label="Messages to Sam" title="What Varun sent to Sam's phone">

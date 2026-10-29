@@ -34,6 +34,10 @@ async function boot() {
   bindLine();
   $('#tgFab').onclick = () => toggleTg();
   $('#tgClose').onclick = () => toggleTg(false);
+  $('#tryFab').onclick = () => { const p = $('#tryPop'); p.hidden = !p.hidden; $('#tryFab').classList.toggle('on', !p.hidden); };
+  $('#tryClose').onclick = () => { $('#tryPop').hidden = true; $('#tryFab').classList.remove('on'); };
+  // a demo call closes the dialer so you can watch
+  document.addEventListener('ttd-demo-start', () => { $('#tryPop').hidden = true; $('#tryFab').classList.remove('on'); });
   setView('mind');
   listen();
   refreshExpect();
@@ -417,7 +421,7 @@ async function startSender(id) {
   $('#apiKey').textContent = sender.api_key;
   const e = $('#empty');
   if (e) { e.querySelector('h3').textContent = 'No rider needs help right now'; e.querySelector('p').textContent = `When a ${sender.name} rider can't find the door and taps Call customer, Skyline answers. The call shows up here, and on the map.`; }
-  $('#dock').hidden = true; document.body.classList.add('is-sender'); setView('map');
+  document.body.classList.add('is-sender'); setView('map');
   $('#tgPop').querySelector('b').textContent = "Receiver's phone";
   renderSenderStats(sender.stats);
   renderOrders();
@@ -751,6 +755,7 @@ function renderDock() {
 function lockDock(on) { document.querySelectorAll('#personas .persona').forEach((b) => (b.disabled = on)); $('#teachDemo').disabled = on; }
 async function demoCall(id) {
   lockDock(true);
+  document.dispatchEvent(new Event('ttd-demo-start'));
   if (id === 'delivery') {
     if (!taught) await setHome({ lat: lastStep().lat, lng: lastStep().lng, label: "Sam's home" });
     await post('/api/demo/replay', {});
