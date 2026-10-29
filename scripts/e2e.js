@@ -1,7 +1,7 @@
 // End-to-end test of the whole flow through the real HTTP tool endpoints and real Google Maps.
 // Nothing is sent: no phone calls, no Telegram messages (DRY_RUN=1). Data goes to a temp folder.
 // Usage: node scripts/e2e.js
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -116,7 +116,27 @@ check('later live updates are silent', handleLocation({ latitude: 12.91235, long
 r = await tool('rider_status', { visit_id: sw.id });
 check('agent sees the Telegram position (near the door path)', r.zone === 'near', `${r.distance_to_anchor_m} m from anchor`);
 
-console.log('\n== 12. Tool endpoint is protected');
+console.log('\n== 12. Teaching the door by voice (calibration)');
+{
+  const D = JSON.parse(readFileSync(new URL('../src/demo/door-hsr.json', import.meta.url), 'utf8'));
+  const st = await tool('start_calibration', { customer: 'Sam', door_id: 'test-door' });
+  check('calibration starts', !!st.calibration_id, say(st));
+  const cid = st.calibration_id;
+  const gaps = await tool('finish_calibration', { calibration_id: cid });
+  check('an empty path is not saved, and the gaps are named', gaps.complete === false && gaps.gaps.length >= 3, say(gaps));
+  const an = await tool('save_anchor', { calibration_id: cid, name: D.anchor.name, lat: D.anchor.lat, lng: D.anchor.lng });
+  check('landmark saved', /Found BDA Complex/.test(an.say), say(an));
+  for (const s of D.steps) await tool('save_step', { calibration_id: cid, instruction: s.instruction, see: s.see, pass: s.pass, lat: s.lat, lng: s.lng, landmark: s.see[0] });
+  await tool('save_door', { calibration_id: cid, ...D.door });
+  await tool('save_fallback', { calibration_id: cid, ...D.fallback });
+  const fin = await tool('finish_calibration', { calibration_id: cid });
+  check('a complete path is saved as the door', fin.complete === true && fin.door_id === 'test-door' && /4 steps/.test(fin.say), say(fin));
+  const ev = recentEvents().filter((e) => e.type === 'calib.step');
+  check('each taught step reaches the live screen', ev.length === 4 && ev.every((e) => Number.isFinite(e.lat)), `${ev.length} steps`);
+  const hl = recentEvents().filter((e) => e.type === 'map.highlight');
+  check('what riders said was lit up on the map', hl.some((e) => e.kind === 'seen') && hl.some((e) => e.kind === 'target'), `${hl.length} highlights`);
+}
+console.log('\n== 13. Tool endpoint is protected');
 const unauth = await fetch(`${base}/tools/next_instruction`, { method: 'POST', body: '{}' });
 check('request without the token is rejected', unauth.status === 401);
 
