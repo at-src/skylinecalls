@@ -12,6 +12,8 @@ import { setPosition, planRide, startSim, stopSim, getRider, advance } from './r
 import { startTelegram } from './telegram.js';
 import { findPlace } from './maps.js';
 import { replay } from './demo/replay.js';
+import { teach } from './demo/teach.js';
+import { startCalibration, getCalibration, saveAnchor, saveStep, saveDoor, saveFallback, finish } from './calibrate.js';
 import { cityAt } from './city.js';
 
 const PORT = Number(env.PORT || 3200);
@@ -80,6 +82,13 @@ const TOOLS = {
     return { say: `The family has been called and messaged. Ask him to wait two minutes. If nobody comes: ${door.fallback.if_no_answer}` };
   },
 
+  // ----- calibration: the customer teaches the way to the door -----
+  async start_calibration(a) { return startCalibration({ customer: val(a.customer) || 'Sam', door_id: val(a.door_id) }); },
+  async save_anchor(a) { const c = getCalibration(val(a.calibration_id)); return c ? saveAnchor(c, a) : { say: 'Start the calibration first (start_calibration).' }; },
+  async save_step(a) { const c = getCalibration(val(a.calibration_id)); return c ? saveStep(c, a) : { say: 'Start the calibration first (start_calibration).' }; },
+  async save_door(a) { const c = getCalibration(val(a.calibration_id)); return c ? saveDoor(c, a) : { say: 'Start the calibration first (start_calibration).' }; },
+  async save_fallback(a) { const c = getCalibration(val(a.calibration_id)); return c ? saveFallback(c, a) : { say: 'Start the calibration first (start_calibration).' }; },
+  async finish_calibration(a) { const c = getCalibration(val(a.calibration_id)); return c ? finish(c) : { say: 'Start the calibration first (start_calibration).' }; },
   async log_outcome(a) {
     const v = visitOf(val(a.visit_id));
     if (!v) return { say: 'OK.' };
@@ -142,6 +151,8 @@ const routes = {
   'POST /api/home/clear': async () => { save('home', null); return { ok: true }; },
   // scripted demo call through the real tools (no phone calls)
   'POST /api/demo/replay': async (b) => { replay(TOOLS, { pace: Number(b.pace || 1) }); return { ok: true }; },
+  // scripted calibration call: Sam teaches the way to the door (no phone, nothing sent to Telegram)
+  'POST /api/demo/teach': async (b) => { teach(TOOLS, { pace: Number(b.pace || 1) }).catch((e) => emit('error', { where: 'teach', message: e.message })); return { ok: true }; },
   'POST /api/visits': async (b) => createVisit({ service: detectService(b.service) || b.service || 'delivery', rider_phone: b.rider_phone || null, source: 'api' }),
   'POST /api/visits/close': async (b) => closeVisit(b.visit_id, b.status || 'closed', b.note || ''),
   'POST /api/rider/position': async (b) => setPosition(b.visit_id, { lat: Number(b.lat), lng: Number(b.lng) }, 'gps'),
