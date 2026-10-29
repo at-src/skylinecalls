@@ -48,6 +48,10 @@ const vars = {
   TOOL_TOKEN: old.TOOL_TOKEN || (await import('node:crypto')).randomBytes(18).toString('hex'),
   BOLNA_TEST_AGENT_ID: old.BOLNA_TEST_AGENT_ID || '',
   BOLNA_ALERT_AGENT_ID: old.BOLNA_ALERT_AGENT_ID || '',
+  BOLNA_CALIB_AGENT_ID: old.BOLNA_CALIB_AGENT_ID || '',
+  BOLNA_LINE_AGENT_ID: old.BOLNA_LINE_AGENT_ID || '',
+  // reads pasted chats into briefings, and sorts calls the agent couldn't place
+  OPENAI_API_KEY: read('oai.txt'),
 };
 
 writeFileSync('.env', Object.entries(vars).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');

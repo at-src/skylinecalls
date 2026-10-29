@@ -6,6 +6,7 @@ import { env } from './env.js';
 import { emit } from './store.js';
 import { createVisit, activeVisits, awaitingVisits, detectService, closeVisit } from './visits.js';
 import { confirmDelivery } from './guide.js';
+import { setMode, savePerson, KIND_LABEL } from './assistant.js';
 import { resolveApproval } from './notify.js';
 import { setPosition, getRider } from './rider.js';
 
@@ -20,6 +21,21 @@ export function handleText(text) {
   const low = t.toLowerCase();
   if (/^\/start|^hi$|^hello$|^help/.test(low)) {
     return 'Hi! Tell me when someone is coming, e.g. "I have an order with Zepto" or "booked an Uber". I\'ll guide only them to your door. Send "status" to see who\'s expected.';
+  }
+  // Sam's line: 'busy' / 'available' / 'sleep', and 'save 98450 12345 as Ankit, cousin' (or 'block 98450 12345')
+  const mode = low.match(/^(busy|meeting|available|free|sleep|sleeping|dnd)\b/);
+  if (mode) {
+    const m = { busy: 'busy', meeting: 'busy', dnd: 'busy', available: 'available', free: 'available', sleep: 'sleep', sleeping: 'sleep' }[mode[1]];
+    setMode(m);
+    return { busy: 'In a meeting: everyone hears you are busy, I take messages.', available: "Available: close ones and VIPs can get you right away.", sleep: 'Sleeping: only your passcode gets through.' }[m];
+  }
+  const sv = t.match(/^(save|block)\s+(\+?[\d\s-]{10,16})(?:\s+as\s+([^,]+?)(?:,\s*(.+))?)?$/i);
+  if (sv) {
+    const block = sv[1].toLowerCase() === 'block';
+    const rel = (sv[4] || '').trim().toLowerCase();
+    const kind = block ? 'blocked' : /mom|dad|mother|father|wife|husband|brother|sister|cousin|friend|family/.test(rel) ? 'close' : /boss|manager|client|doctor/.test(rel) ? 'vip' : 'known';
+    const p = savePerson(sv[2], { name: (sv[3] || '').trim() || undefined, relation: rel || undefined, kind });
+    return p ? (block ? "Blocked. I'll cut them off." : `Saved ${p.name || 'them'} as ${KIND_LABEL[kind].toLowerCase()}.`) : 'That number looks wrong.';
   }
   if (/^status/.test(low)) {
     const a = activeVisits();

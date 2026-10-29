@@ -17,6 +17,9 @@ import { fleet, stopFleet } from './demo/fleet.js';
 import { SENDERS, GUIDE_NUMBER, senderKeys, senderFor, registerOrder, orderLocation, orderStatus, getOrder, ordersOf, senderStats, consent, setConsent } from './sender.js';
 import { startCalibration, getCalibration, saveAnchor, saveStep, saveDoor, saveFallback, finish } from './calibrate.js';
 import { cityAt } from './city.js';
+import * as A from './assistant.js';
+import { demoCall, personaList } from './demo/calls.js';
+const mints = new Map(); let lastMint = 0;
 
 const PORT = Number(env.PORT || 3200);
 const TOKEN = env.TOOL_TOKEN || '';
@@ -91,6 +94,13 @@ const TOOLS = {
   async save_door(a) { const c = getCalibration(val(a.calibration_id)); return c ? saveDoor(c, a) : { say: 'Start the calibration first (start_calibration).' }; },
   async save_fallback(a) { const c = getCalibration(val(a.calibration_id)); return c ? saveFallback(c, a) : { say: 'Start the calibration first (start_calibration).' }; },
   async finish_calibration(a) { const c = getCalibration(val(a.calibration_id)); return c ? finish(c) : { say: 'Start the calibration first (start_calibration).' }; },
+  // ----- Sam's line: every call -----
+  async lookup_caller(a) { return A.lookupCaller({ caller_number: val(a.caller_number) }); },
+  async classify_caller(a) { return A.classifyCaller({ caller_number: val(a.caller_number), name: val(a.name), org: val(a.org), purpose: val(a.purpose), guess: val(a.guess), visit_id: val(a.visit_id) }); },
+  async check_passcode(a) { return A.checkPasscode({ caller_number: val(a.caller_number), code: val(a.code), name: val(a.name) }); },
+  async take_message(a) { return A.takeMessage({ caller_number: val(a.caller_number), name: val(a.name), message: val(a.message), urgent: val(a.urgent) }); },
+  async alert_owner(a) { return A.alertOwner({ caller_number: val(a.caller_number), name: val(a.name), reason: val(a.reason) }); },
+  async end_call(a) { return A.endCall({ caller_number: val(a.caller_number), name: val(a.name), org: val(a.org), kind: val(a.kind), summary: val(a.summary), outcome: val(a.outcome), block: a.block === true ? true : val(a.block), relation: val(a.relation) }); },
   async log_outcome(a) {
     const v = visitOf(val(a.visit_id));
     if (!v) return { say: 'OK.' };
@@ -199,6 +209,41 @@ const routes = {
   // ----- receiver side: which senders may guide riders with the household's door path -----
   'GET /api/consent': () => consent(),
   'POST /api/consent': (b) => setConsent(String(b.sender || ''), b.allowed !== false && b.allowed !== 'false'),
+  // ----- Sam's line: what the agent knows, his rules, briefings, the call log -----
+  'GET /api/line': () => ({
+    profile: A.profile(), modes: A.MODES, labels: A.KIND_LABEL,
+    people: Object.entries(A.people()).map(([number, p]) => ({ number, shown: A.showNumber(number), ...p })),
+    briefings: A.briefings(), calls: A.calls().slice(0, 30), personas: personaList(),
+    sample_chat: readFileSync('src/demo/sample-chat.txt', 'utf8'), web_call: env.ALLOW_CALLS === '1' && !!env.BOLNA_LINE_AGENT_ID,
+  }),
+  'POST /api/line/mode': (b) => A.setMode(String(b.mode || '')),
+  'POST /api/line/rule': (b) => A.setRule(String(b.kind || ''), { say: b.say, budget: b.budget }),
+  'POST /api/line/passcode': (b) => A.setPasscode(b.code),
+  'POST /api/people': (b) => A.savePerson(b.number, { name: b.name, relation: b.relation, kind: A.KINDS.includes(b.kind) || b.kind === 'blocked' ? b.kind : undefined }),
+  'POST /api/people/forget': (b) => A.forgetPerson(b.number),
+  'POST /api/briefings/import': (b) => A.briefingFromChat(b.text),
+  'POST /api/briefings': (b) => A.addBriefing(b),
+  'POST /api/briefings/delete': (b) => A.removeBriefing(String(b.id || '')),
+  'POST /api/demo/call': (b) => { demoCall(TOOLS, { persona: String(b.persona || 'sales'), pace: Number(b.pace || 1) }).catch((e) => emit('error', { where: 'demo call', message: e.message })); return { ok: true }; },
+  // talk to the line from the browser (Bolna web call): a one-time session minted here, so the key never reaches the page
+  'POST /api/webcall/session': async (b, q, req) => {
+    if (env.ALLOW_CALLS !== '1' || !env.BOLNA_LINE_AGENT_ID) return { error: 'web calls are off' };
+    const ip = String(req?.headers['x-forwarded-for'] || req?.socket?.remoteAddress || '').split(',')[0];
+    const now = Date.now(), recent = (mints.get(ip) || []).filter((t) => now - t < 3600e3);
+    if (recent.length >= 8 || now - lastMint < 15000) return { error: 'The line is busy. Try again in a minute.' };
+    mints.set(ip, [...recent, now]); lastMint = now;
+    const u = b.user_data || {};
+    const number = A.normNumber(u.caller_number) || '+910000000000';
+    const r = await fetch('https://api.bolna.ai/web-call/freeswitch-session', {
+      method: 'POST', headers: { Authorization: `Bearer ${env.BOLNA_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: env.BOLNA_LINE_AGENT_ID, user_data: { owner: A.profile().owner, caller_number: number, customer_name: A.profile().owner, visit_id: '' } }),
+    });
+    const j = await r.json();
+    if (!r.ok || !j.run_id) return { error: 'Could not open the line right now.' };
+    emit('call.started', { kind: 'line', caller: A.showNumber(number), number, web: true, execution: j.run_id });
+    followCall(null, j.run_id, 'caller');
+    return j;
+  },
   'POST /bolna/webhook': async (b) => { emit('bolna.event', { status: b.status, execution: b.id || b.execution_id, transcript: (b.transcript || '').slice(-600) }); return { ok: true }; },
 };
 
@@ -242,7 +287,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     const h = routes[`${req.method} ${url.pathname}`];
-    if (h) return json(res, 200, (await h(req.method === 'POST' ? await readBody(req) : {}, url.searchParams)) ?? null);
+    if (h) return json(res, 200, (await h(req.method === 'POST' ? await readBody(req) : {}, url.searchParams, req)) ?? null);
     // static files from public/
     // (/map3d/ is the 3D city renderer in city/, shown inside the dashboard)
     let f = 'public' + (url.pathname === '/' ? '/index.html' : url.pathname);
@@ -259,7 +304,7 @@ const server = createServer(async (req, res) => {
 });
 
 // Polls a live Bolna call and emits each new transcript line once, plus the end of the call.
-function followCall(visit, execution) {
+function followCall(visit, execution, userRole = 'rider') {
   let seen = 0, tries = 0;
   const timer = setInterval(async () => {
     try {
@@ -267,7 +312,7 @@ function followCall(visit, execution) {
       const lines = String(e.transcript || '').split('\n').map((l) => l.trim()).filter(Boolean);
       for (; seen < lines.length; seen++) {
         const m = lines[seen].match(/^(assistant|user)\s*:\s*(.*)$/i);
-        if (m && m[2]) emit('call.line', { visit, role: m[1].toLowerCase() === 'user' ? 'rider' : 'agent', text: m[2] });
+        if (m && m[2]) emit('call.line', { visit, role: m[1].toLowerCase() === 'user' ? userRole : 'agent', text: m[2] });
       }
       if (['completed', 'failed', 'no-answer', 'busy', 'canceled', 'error'].includes(e.status) || ++tries > 300) {
         clearInterval(timer); emit('call.ended', { visit, status: e.status });

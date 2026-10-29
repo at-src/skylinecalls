@@ -8,9 +8,12 @@ import { flags, notify } from '../notify.js';
 import { confirmDelivery } from '../guide.js';
 import { clipFor } from './audio.js';
 
+// the rider's phone (app calls usually come from the delivery app's masked number)
+const RIDER = '+918047300112';
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 export const SCRIPT = [
-  ['agent', 'Hello?'],
-  ['rider', 'Haan sir, Zepto se. Aapka order hai.', 'verify_caller', (v) => ({ visit_id: v.id, service: v.service })],
+  ['agent', 'Hello?', 'lookup_caller', () => ({ caller_number: RIDER })],
+  ['rider', 'Haan sir, Zepto se. Aapka order hai.', 'classify_caller', (v) => ({ caller_number: RIDER, visit_id: v.id, org: cap(v.service), purpose: 'aapka order hai', guess: 'delivery' })],
   ['agent', 'Haan ji, bolo. Location pe ho abhi?'],
   ['rider', 'Nahi sir, Agara lake ke paas aa gaya, galat mud gaya.', 'next_instruction', (v) => ({ visit_id: v.id, seen: 'Agara lake ke paas' })],
   ['agent', 'Achha. Ring Road pakdo, Silk Board ki taraf. Flyover ke baad 9th Main pe left.'],
@@ -27,13 +30,13 @@ export const SCRIPT = [
   ['rider', 'Knock kiya, koi khol nahi raha.', 'call_customer', (v) => ({ visit_id: v.id, reason: 'is at the door and nobody is opening' })],
   ['agent', 'Ruko, bulata hoon. Bhaiya shoe rack pe rakh do, photo bhej dena.'],
   ['rider', 'Theek hai, rakh diya.', 'log_outcome', (v) => ({ visit_id: v.id, result: 'left on the shoe rack', note: 'photo sent' })],
-  ['agent', 'Haan theek hai, thanks.'],
+  ['agent', 'Haan theek hai, thanks.', 'end_call', (v) => ({ caller_number: RIDER, org: cap(v.service), kind: 'delivery', summary: 'guided to the door, left on the shoe rack', outcome: 'delivered' })],
 ];
 
 let running = false;
 export const isReplaying = () => running;
 
-export async function replay(TOOLS, { pace = 1, visit_id = null, caller = 'Zepto rider', service = 'zepto' } = {}) {
+export async function replay(TOOLS, { pace = 1, visit_id = null, caller = '+91 80473 00112', service = 'zepto' } = {}) {
   if (running) return { ok: false, error: 'already running' };
   running = true; flags.noCalls = true; flags.quiet = true;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms / pace));
@@ -47,7 +50,7 @@ export async function replay(TOOLS, { pace = 1, visit_id = null, caller = 'Zepto
       notify("Got it, expecting Zepto for the next 3 hours. I'll guide only them and message you as they get close.");
       await sleep(2200);
     }
-    emit('call.started', { visit: v.id, demo: true, caller });
+    emit('call.started', { visit: v.id, demo: true, caller, kind: 'line', number: RIDER });
     await sleep(1500);
     for (const [i, [role, text, tool, args]] of SCRIPT.entries()) {
       const said = text.replace(/Zepto/g, v.service.charAt(0).toUpperCase() + v.service.slice(1));

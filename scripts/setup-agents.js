@@ -5,7 +5,7 @@
 // Usage: node scripts/setup-agents.js
 import '../src/env.js';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { GUIDE_WELCOME, GUIDE_PROMPT, ALERT_PROMPT, CALIB_WELCOME, CALIB_PROMPT, KEYWORDS } from '../src/prompts.js';
+import { GUIDE_WELCOME, GUIDE_PROMPT, ALERT_PROMPT, CALIB_WELCOME, CALIB_PROMPT, KEYWORDS, LINE_WELCOME, LINE_PROMPT, LINE_KEYWORDS } from '../src/prompts.js';
 
 const { BOLNA_API_KEY: KEY, PUBLIC_URL, TOOL_TOKEN } = process.env;
 if (!PUBLIC_URL) throw new Error('PUBLIC_URL missing: start ngrok and set it in .env');
@@ -52,7 +52,23 @@ const CALIB_DEFS = [
   ['finish_calibration', 'Check the path for gaps and save it.',
     { calibration_id: C('calibration_id from start_calibration') }, ['calibration_id']],
 ];
-const PRE = { verify_caller: 'Haan ji, bolo', ask_customer: 'Haan, ruko ek second', check_approval: 'Haan ek second', next_instruction: '', rider_status: '', call_customer: 'Ruko, bulata hoon', log_outcome: '' };
+// Sam's line: every call. The delivery tools (minus verify_caller, which classify_caller runs) come along.
+const N = S('caller_number from the call context');
+const LINE_DEFS = [
+  ['lookup_caller', 'Who is calling. Call it FIRST, before saying anything else, with the caller_number from the call context.',
+    { caller_number: N }, ['caller_number']],
+  ['classify_caller', 'Sort the caller once they say who they are or why they called. Returns the rule, the time limit and any briefing to follow. For deliveries and cabs it also checks the order.',
+    { caller_number: N, name: S('Their name, if they said'), org: S('Company or app they are from, e.g. LIC, Jio, Zepto'), purpose: S('Why they called, in their words'), guess: S('Your guess: close, vip, known, service, sales, delivery or unknown') }, ['caller_number', 'purpose']],
+  ['check_passcode', 'Check the code a caller gives to reach the owner urgently. Pass only the digits they said.',
+    { caller_number: N, code: S('The digits they said'), name: S('Who they say they are') }, ['caller_number', 'code']],
+  ['take_message', 'Send the owner a message from the caller.',
+    { caller_number: N, name: S('Who it is from'), message: S('The message, short, with any dates, times and amounts'), urgent: S('true if it is urgent') }, ['caller_number', 'message']],
+  ['alert_owner', 'Alert the owner right now: something urgent, or an offer outside a briefing.',
+    { caller_number: N, name: S('Who is calling'), reason: S('Why, in one line with any amounts') }, ['caller_number', 'reason']],
+  ['end_call', 'Log the call before hanging up. Always call it once at the end.',
+    { caller_number: N, name: S('Their name'), org: S('Their company'), kind: S('close, vip, known, service, sales, delivery or unknown'), summary: S('One line: what happened, with amounts and dates'), outcome: S('e.g. declined, message taken, agreed: rent by the 10th'), block: S('true for spam or sales, to cut them off next time'), relation: S('Who they are to the owner, if they said') }, ['caller_number', 'summary']],
+];
+const PRE = { lookup_caller: '', classify_caller: '', check_passcode: 'Ek second', take_message: '', alert_owner: '', end_call: '', verify_caller: 'Haan ji, bolo', ask_customer: 'Haan, ruko ek second', check_approval: 'Haan ek second', next_instruction: '', rider_status: '', call_customer: 'Ruko, bulata hoon', log_outcome: '' };
 
 const toolsFor = (defs) => ({
   tools: defs.map(([name, description, properties, required]) => ({
@@ -107,7 +123,14 @@ const guidePrompt = GUIDE_PROMPT.replace('{visit_hint}', '. If the call context 
 const guideId = await upsert('BOLNA_GUIDE_AGENT_ID', agentBody({ name: 'ToTheDoor guide', welcome: GUIDE_WELCOME, prompt: guidePrompt, tools: apiTools }));
 const alertId = await upsert('BOLNA_ALERT_AGENT_ID', agentBody({ name: 'ToTheDoor customer alert', welcome: 'Hello, {customer_name}?', prompt: ALERT_PROMPT, terminate: 90 }));
 const calibId = await upsert('BOLNA_CALIB_AGENT_ID', agentBody({ name: 'ToTheDoor teach the door', welcome: CALIB_WELCOME, prompt: CALIB_PROMPT + '\n\nCall context: customer_name = {customer_name}; door_id = {door_id}.', tools: toolsFor(CALIB_DEFS), terminate: 600 }));
+const linePrompt = LINE_PROMPT + '\n\nCall context: owner = {owner}; caller_number = {caller_number}.';
+const lineTools = toolsFor([...LINE_DEFS, ...TOOL_DEFS.filter(([n]) => n !== 'verify_caller')]);
+const lineBody = agentBody({ name: "ToTheDoor · Sam's line", welcome: LINE_WELCOME, prompt: linePrompt, tools: lineTools, terminate: 600 });
+lineBody.agent_config.tasks[0].tools_config.transcriber.keywords = [...KEYWORDS, ...LINE_KEYWORDS].join(', ');
+const lineId = await upsert('BOLNA_LINE_AGENT_ID', lineBody);
 writeFileSync('.env', env);
+const l = await api('/v2/agent/' + lineId);
+console.log('line tools:', (l.agent_config?.tasks || l.tasks)[0].tools_config.api_tools.tools.map((t) => t.name).join(', '));
 
 // read back and confirm tools are attached and point at PUBLIC_URL
 const g = await api('/v2/agent/' + guideId);

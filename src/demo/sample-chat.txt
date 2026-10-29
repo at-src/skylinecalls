@@ -1,0 +1,11 @@
+You: I'm selling my 2019 Honda City (petrol, 41,000 km). A guy called Vikram Rao saw the OLX ad and said he'll call tomorrow. I'll be at work. How should I handle the price?
+
+ChatGPT: For a 2019 City with 41k km in Bengaluru, ₹6.2–6.5 lakh is a fair asking range. List firm at ₹6.4 lakh and leave yourself room. What's the lowest you'd accept?
+
+You: Honestly 5.8 is my floor. I'd love 6.2.
+
+ChatGPT: Then open at ₹6.4 lakh, aim to settle around ₹6.2 lakh, and don't go below ₹5.8 lakh. A test drive is normal; offer Saturday morning. Don't share the exact address until he confirms the test drive, just say HSR Layout.
+
+You: Also I don't want him to know I'm moving abroad next month, he'll lowball me.
+
+ChatGPT: Makes sense, keep that to yourself. If he asks why you're selling, just say you're upgrading. If he offers below ₹5.8 lakh, politely say no. If he offers between 5.8 and 6.2, say you'll think about it and come back to him the same day.

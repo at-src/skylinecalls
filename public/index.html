@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ToTheDoor · live</title>
-  <meta name="description" content="The last 40 metres to your door, by voice." />
+  <title>ToTheDoor · Sam's line</title>
+  <meta name="description" content="A call agent that answers every call for you: knows who is who, follows your rules, guides deliveries to your door." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='7' y='3' width='18' height='26' rx='3' fill='%23f5b84a'/><circle cx='20' cy='17' r='2' fill='%23131311'/></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,6 +14,7 @@
 </head>
 <body>
   <a class="skip" href="#call">Skip to the live call</a>
+  <script src="https://cdn.jsdelivr.net/gh/bolna-ai/web-call@v3.0.1/dist/bolna-web-call.min.js" defer></script>
   <div class="app">
     <!-- ============ the city ============ -->
     <section class="stage" aria-label="3D map of the neighbourhood">
@@ -23,6 +24,7 @@
       <div class="hud top-left">
         <div class="brand"><span class="mark" aria-hidden="true"></span><span>ToTheDoor</span></div>
         <div class="chip" id="statusChip"><span class="led" id="statusLed"></span><span id="statusText">Loading the city</span></div>
+        <button class="textbtn" id="viewToggle">Door map</button>
       </div>
 
       <div class="hud top-right">
@@ -50,6 +52,64 @@
         <div class="ribbon" id="ribbon" aria-label="Door path"></div>
       </div>
 
+      <!-- Sam's line: what the agent knows and is doing. Covers the map unless a call is a delivery. -->
+      <section class="mind" id="mind" aria-label="Sam's line">
+        <!-- between calls: who it knows, the rules, briefings, the call log -->
+        <div class="line-view" id="lineView">
+          <header class="lv-head">
+            <div>
+              <p class="eyebrow">Your call agent</p>
+              <h1>Sam's line</h1>
+              <p class="sub">Answers every call for Sam. Knows who's who, follows his rules, keeps each call to its time, and tells him what it did.</p>
+            </div>
+            <div class="lv-ctrl">
+              <div class="seg" id="modeSeg" role="group" aria-label="Sam is">
+                <button data-mode="available">Available</button><button data-mode="busy">In a meeting</button><button data-mode="sleep">Sleeping</button>
+              </div>
+              <button class="code" id="codeChip" title="Close ones say this code to reach Sam in any mode">Close-ones code <b id="codeVal">•••••</b></button>
+            </div>
+          </header>
+          <p class="mode-note" id="modeNote"></p>
+          <div class="lv-grid">
+            <section class="box calls-box"><h2>Recent calls</h2><ol class="log" id="callLog"></ol></section>
+            <section class="box"><h2>Briefings <small>calls Sam expects</small></h2>
+              <div class="brief-list" id="briefList"></div>
+              <div class="brief-add">
+                <textarea id="briefText" rows="3" placeholder="Paste a ChatGPT or Claude chat, or write it yourself: who will call, what to say, how far it can go, what to keep private."></textarea>
+                <div class="row"><button class="small primary" id="briefRead">Read it</button><button class="small ghostbtn" id="briefSample">Use a sample chat</button></div>
+                <div class="draft" id="briefDraft" hidden></div>
+              </div>
+            </section>
+            <section class="box"><h2>People it knows</h2><ol class="people" id="peopleList"></ol>
+              <form class="person-add" id="personAdd">
+                <input name="number" placeholder="Number" inputmode="tel" required aria-label="Number" />
+                <input name="name" placeholder="Name" aria-label="Name" />
+                <input name="relation" placeholder="Who (e.g. cousin)" aria-label="Who they are" />
+                <select name="kind" aria-label="Treat as"><option value="close">Close one</option><option value="vip">VIP</option><option value="known">Known</option><option value="service">Service</option><option value="blocked">Blocked</option></select>
+                <button class="small primary">Save</button>
+              </form>
+            </section>
+            <section class="box"><h2>Rules <small>how it treats each kind of caller</small></h2><div class="rules" id="rules"></div></section>
+          </div>
+        </div>
+        <!-- during a call: who it thinks this is, the rule and time limit, any briefing, each decision -->
+        <div class="live-view" id="liveView" hidden>
+          <button class="back" id="backLine">← Sam's line</button>
+          <div class="lc-who">
+            <div class="lc-av" id="lcAv">?</div>
+            <div><h1 id="lcName">Unknown number</h1><p id="lcSub"></p></div>
+            <span class="kchip" id="lcKind">Sorting…</span>
+          </div>
+          <div class="kinds" id="lcKinds"></div>
+          <div class="lc-grid">
+            <section class="box"><h2>What it knows</h2><div id="lcKnow"></div></section>
+            <section class="box"><h2>Rule</h2><p id="lcRule" class="rule-text"></p><div class="budget"><div class="bar"><i id="lcBar"></i></div><span id="lcTime"></span></div></section>
+            <section class="box brief-box" id="lcBriefBox" hidden><h2>Briefing in use</h2><div id="lcBrief"></div></section>
+            <section class="box steps-box"><h2>What it's doing</h2><ol class="steps" id="lcSteps"></ol></section>
+            <section class="box out-box" id="lcOutBox" hidden><h2>Done</h2><div id="lcOut"></div></section>
+          </div>
+        </div>
+      </section>
       <div class="credits" id="credits"></div>
 
       <!-- onboarding: where is home -->
@@ -57,10 +117,10 @@
         <!-- who are you: receiving visits at a door, or sending people to doors -->
         <div class="card role" id="roleCard">
           <p class="eyebrow">Welcome to ToTheDoor</p>
-          <h1>Are you receiving or sending?</h1>
-          <p class="sub">The same door path serves both: receivers teach it once, every sender's rider is guided by it.</p>
-          <button class="pick" id="pickReceiver"><b>I'm receiving</b><span>A home, office, hospital or society. Teach your door once; riders and drivers get guided in.</span></button>
-          <button class="pick" id="pickSender"><b>I'm sending</b><span>(business, delivery, cab service) Your riders reach ToTheDoor when they can't find the door.</span></button>
+          <h1>Who is it for?</h1>
+          <p class="sub">A call agent that picks up for you. Deliveries and cabs get guided to the door it learned.</p>
+          <button class="pick" id="pickReceiver"><b>Me</b><span>It answers my calls: spam cut off, close ones through, messages and briefings handled, riders guided to my door.</span></button>
+          <button class="pick" id="pickSender"><b>A delivery or cab company</b><span>(business, delivery, cab service) Your riders reach ToTheDoor when they can't find the door.</span></button>
         </div>
         <div class="card role" id="senderCard" hidden>
           <p class="eyebrow">Sending</p>
@@ -123,21 +183,22 @@
       <div class="stream" id="stream" aria-live="polite">
         <div class="empty" id="empty">
           <div class="door-ill" aria-hidden="true"><span></span></div>
-          <h3>Waiting for the next visitor</h3>
-          <p>Tell the Telegram bot who's coming. When the rider calls, the conversation appears here.</p>
+          <h3>Waiting for the next call</h3>
+          <p>Every call to Sam is answered here. Spam gets cut off, close ones get through, deliveries get guided to the door.</p>
           <div class="expect" id="expect"></div>
-          <div class="consent" id="consent" aria-label="Senders whose riders may be guided"></div>
-          <div class="actions">
-            <button class="primary" id="playDemo">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 001.5.86l11-6.5a1 1 0 000-1.72l-11-6.5A1 1 0 008 5.5z"/></svg>
-              Play a demo delivery
-            </button>
-            <button class="ghost" id="teachDemo">Teach the door by voice</button>
-            <button class="ghost" id="callMe">Call me as the rider</button>
-          </div>
-          <p class="hint" id="callHint"></p>
         </div>
       </div>
+
+      <!-- try it: call Sam's line as someone -->
+      <section class="dock" id="dock" aria-label="Try a call">
+        <div class="dock-head"><span>Call Sam's line as</span><button class="textlink" id="teachDemo">Teach the door by voice</button></div>
+        <div class="personas" id="personas"></div>
+        <div class="talk" id="talk">
+          <select id="talkAs" aria-label="Calling from"></select>
+          <button class="primary small" id="talkBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 006 6.92V21h2v-2.08A7 7 0 0019 12h-2z"/></svg><span>Talk to it</span></button>
+        </div>
+        <p class="hint" id="callHint"></p>
+      </section>
 
       <div class="guard" id="guard" hidden role="alertdialog" aria-labelledby="guardTitle">
         <div class="guard-top">

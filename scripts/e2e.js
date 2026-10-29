@@ -185,6 +185,37 @@ console.log('\n== 14. Tool endpoint is protected');
 const unauth = await fetch(`${base}/tools/next_instruction`, { method: 'POST', body: '{}' });
 check('request without the token is rejected', unauth.status === 401);
 
+console.log("\n== 15. Sam's line: every call, by who it is");
+{
+  const SPAM = '+919845012345', ROHIT = '+919900112233', NEW = '+919731100456', SHARMA = '+919845566778';
+  let o = await tool('lookup_caller', { caller_number: SPAM });
+  check('unknown number: asks who it is', o.known === false && /Ask who they are/.test(o.say), say(o));
+  o = await tool('classify_caller', { caller_number: SPAM, name: 'Neha', org: 'LIC', purpose: 'term insurance plan', guess: 'unknown' });
+  check('LIC pitch sorted as sales with a short time limit', o.kind === 'sales' && o.budget <= 30, `${o.kind} ${o.budget}s`);
+  await tool('end_call', { caller_number: SPAM, name: 'Neha', org: 'LIC', kind: 'sales', summary: 'LIC pitch, declined' });
+  o = await tool('lookup_caller', { caller_number: SPAM });
+  check('the same number again is blocked and cut off', o.blocked === true && /hang up/i.test(o.say), say(o));
+  await tool('end_call', { caller_number: SPAM, kind: 'sales', summary: 'cut off' });
+  o = await tool('lookup_caller', { caller_number: ROHIT });
+  check('a close friend is greeted by name, not asked who he is', o.known && o.kind === 'close' && /do NOT ask who/.test(o.say), say(o));
+  await tool('end_call', { caller_number: ROHIT, name: 'Rohit', kind: 'close', summary: 'cricket at 8' });
+  o = await tool('classify_caller', { caller_number: '+917011223344', name: 'Riya', org: 'Jio', purpose: 'postpaid auto-pay failed, bill pending' });
+  check('Jio auto-pay call is service, not a cab', o.kind === 'service' && /Never share an OTP/.test(o.say), `${o.kind}`);
+  await tool('end_call', { caller_number: '+917011223344', kind: 'service', summary: 'bill' });
+  o = await tool('check_passcode', { caller_number: NEW, code: '11111' });
+  check('wrong code does not reach Sam', o.ok === false);
+  o = await tool('check_passcode', { caller_number: NEW, code: '5 5 4 3 4', name: 'Mom' });
+  check('right code alerts Sam', o.ok === true && recentEvents().some((e) => e.type === 'notify' && /with your code/.test(e.text)));
+  await tool('end_call', { caller_number: NEW, name: 'Mom', kind: 'close', summary: 'urgent' });
+  o = await tool('lookup_caller', { caller_number: SHARMA });
+  check("landlord's call comes with Sam's briefing and its limits", /BRIEFING/.test(o.say) && /15th/.test(o.say), say(o));
+  await tool('end_call', { caller_number: SHARMA, name: 'Mr Sharma', kind: 'known', summary: 'rent by the 10th' });
+  o = await tool('classify_caller', { caller_number: '+919811100000', name: 'Rahul', org: 'XYZ Capital', purpose: 'about the round' });
+  check('investor from an unknown number still matched to his briefing by company', !!o.briefing && /8 Cr/.test(o.say));
+  await tool('end_call', { caller_number: '+919811100000', kind: 'known', summary: 'round' });
+  const L = await (await fetch(base + '/api/line')).json();
+  check('call log and memory kept', L.calls.length >= 6 && L.people.some((p) => p.number === SPAM && p.kind === 'blocked'), `${L.calls.length} calls`);
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 server.close();
 process.exit(fail ? 1 : 0);
