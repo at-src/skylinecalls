@@ -28,7 +28,13 @@ await p.click('#useDemo');
 await wait(9000);
 const hours = (process.argv[2] || '3,7,9.5,13,17.5,18.5,20,23').split(',').map(Number);
 for (const h of hours) {
-  await p.evaluate((hh) => { const c = window.__city; c.controls.autoRotate = false; c.setHour(hh); c.look(c.home.clone(), 260, 1.05, 4.0, 0.05); }, h);
+  // TARGET="x,z,dist" looks at another spot (local metres), e.g. the Outer Ring Road
+  const tgt = process.env.TARGET ? process.env.TARGET.split(',').map(Number) : null;
+  await p.evaluate(([hh, t]) => {
+    const c = window.__city; c.controls.autoRotate = false; c.setHour(hh);
+    const at = t ? c.home.clone().set(t[0], 0, t[1]) : c.home.clone();
+    c.look(at, t ? t[2] : 260, 1.05, 4.0, 0.05);
+  }, [h, tgt]);
   await wait(1500);
   const cars = await p.evaluate(() => { const c = window.__city; return { dens: +c.dens.toFixed(2), active: c.cars.filter((v) => v.q <= c.dens).length, total: c.cars.length }; });
   console.log(`hour ${h}: traffic ${cars.active}/${cars.total} (density ${cars.dens})`);

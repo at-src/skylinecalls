@@ -12,7 +12,7 @@ const { start } = await import('../src/server.js');
 const PORT = 3297;
 const server = await start(PORT);
 
-const b = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new', userDataDir: 'C:/hc/tothedoor/.chrome-3d', args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
+const b = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new', userDataDir: 'C:/hc/tothedoor/.chrome-3d', args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan,WebGPU', '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
 const p = await b.newPage();
 await p.setViewport({ width: 1600, height: 900 });
 const errs = [];
@@ -26,7 +26,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 await wait(9000);
 await p.screenshot({ path: 'scripts/ui-1-onboard.jpg', type: 'jpeg', quality: 82 });
 await p.click('#useDemo');
-await wait(16000);
+await wait(30000);
 await p.screenshot({ path: 'scripts/ui-2-home.jpg', type: 'jpeg', quality: 82 });
 
 await fetch(`http://localhost:${PORT}/api/demo/replay`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pace: 2 }) });
