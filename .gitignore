@@ -13,7 +13,7 @@ Thumbs.db
 data/
 data/
 .design-refs/
-.chrome-3d/
+.chrome-*/
 scripts/*.jpg
 scripts/*.png
 scripts/*.log

@@ -302,28 +302,83 @@ const zoneMat = () => new THREE.ShaderMaterial({
 
 const roadMat = () => new THREE.ShaderMaterial({
   uniforms: sharedUniforms(),
+  extensions: { derivatives: true },
   vertexShader: /* glsl */`
-    attribute vec3 aRoad; // width, rank, footway
-    varying vec2 vUv; varying vec3 vRoad; varying float vDist; varying vec3 vW;
-    void main(){ vUv = uv; vRoad = aRoad; vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; vec4 mv = viewMatrix * w; vDist = -mv.z; gl_Position = projectionMatrix * mv; }`,
+    attribute vec3 aRoad;  // width (m), rank, kind: 0 carriageway, 1 footpath, 2 sidewalk beside a main road
+    attribute vec4 aRoad2; // lanes, one-way, first lamp position along the road (m), lamp spacing (m; 0 = unlit)
+    attribute vec3 aLamp;  // street light colour on this road
+    varying vec2 vUv; varying vec3 vRoad; varying vec4 vRoad2; varying vec3 vLamp; varying float vDist; varying vec3 vW;
+    void main(){ vUv = uv; vRoad = aRoad; vRoad2 = aRoad2; vLamp = aLamp; vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; vec4 mv = viewMatrix * w; vDist = -mv.z; gl_Position = projectionMatrix * mv; }`,
   fragmentShader: /* glsl */`${COMMON}
-    varying vec2 vUv; varying vec3 vRoad; varying float vDist; varying vec3 vW;
+    varying vec2 vUv; varying vec3 vRoad; varying vec4 vRoad2; varying vec3 vLamp; varying float vDist; varying vec3 vW;
+    // a painted line of half-width hw at distance d, anti-aliased by screen-space derivative
+    float paint(float d, float hw){ float aa = fwidth(d) + .02; return 1. - smoothstep(hw, hw + aa, d); }
     void main(){
-      float across = vUv.x, along = vUv.y, w = vRoad.x, rank = vRoad.y, foot = vRoad.z;
+      float across = vUv.x, along = vUv.y, w = vRoad.x, rank = vRoad.y, kind = vRoad.z;
+      float lanes = vRoad2.x, oneway = vRoad2.y, phase = vRoad2.z, gap = vRoad2.w;
+      float x = across * w;                        // metres from the left edge
       vec3 L = light(vec3(0,1,0));
+
+      // street lighting: a lamp every 'gap' metres along this road. The road is lit all along its length,
+      // brightest under each lamp, and the lamp's colour (white LED or orange sodium) tints the asphalt.
+      float lit = 0.;
+      if (gap > .5) {
+        float dl = abs(fract((along - phase) / gap + .5) - .5) * gap;
+        lit = .55 + exp(-dl * dl / (gap * gap * .07));
+      } else if (rank > .5 || kind > .5) lit = .3;     // unlit lanes and footpaths still catch spill from houses
+      float strength = rank > 2.5 ? 1.1 : rank > 1.5 ? .95 : rank > .5 ? .85 : .5;
+      vec3 lampL = vLamp * lit * strength * uLamp * uNight * 4.6;
+      vec3 Lr = L + lampL, Lm = L + lampL * .3;    // asphalt takes the full light; bright paint less, so it doesn't bloom
+
+      // sidewalks and medians beside main roads: square paving with a grass strip at the outer edge
+      if (kind > 1.5) {
+        vec2 t = vec2(along, x) / .6;
+        float joint = step(.92, fract(t.x)) + step(.92, fract(t.y));
+        vec3 c = lin(vec3(.50,.48,.44)) * (.85 + .15 * vnoise(vW.xz * .8)) * (1. - .25 * min(joint, 1.));
+        float verge = step(min(x, w - x), 1.3);
+        c = mix(c, lin(vec3(.24,.32,.17)) * (.8 + .3 * vnoise(vW.xz * 1.5)), verge);
+        gl_FragColor = vec4(fogMix(c * (L + lampL * .8), vDist), 1.); return;
+      }
+
       vec3 asphalt = lin(vec3(.20,.20,.21)) * (.85 + .25 * vnoise(vW.xz * .6)) * (1. - .1 * step(.7, vnoise(vW.xz * 3.)));
+      asphalt *= 1. - .12 * smoothstep(.3, .5, vnoise(vec2(x * 1.7, along * .08)));  // darker tyre tracks
       if (rank < .5) asphalt = lin(vec3(.27,.26,.24)) * (.8 + .3 * vnoise(vW.xz * .5));
-      if (foot > .5) asphalt = lin(vec3(.42,.40,.37));
-      vec3 c = asphalt * L;
-      // kerb stones painted black and yellow on main roads, a very Bengaluru detail
-      float edge = min(across, 1. - across) * w;
-      float kerb = step(edge, .35) * step(1.5, rank);
-      c = mix(c, step(.5, fract(along / 1.4)) > .5 ? lin(vec3(.85,.72,.12)) * L : lin(vec3(.05)) * L, kerb);
-      // lane markings: centre line dashes on main roads, a solid divider on wide ones
-      float centre = step(abs(across - .5) * w, .09) * step(1.5, rank) * step(.45, fract(along / 7.));
-      float divider = step(abs(across - .5) * w, .22) * step(3.5, rank);
-      c = mix(c, lin(vec3(.85)) * L * 1.2, max(centre, divider * .0));
-      c = mix(c, lin(vec3(.38,.37,.33)) * L, divider);
+      if (kind > .5) asphalt = lin(vec3(.42,.40,.37));
+      vec3 c = asphalt * Lr;
+
+      if (kind < .5 && rank > 1.5) {
+        float edge = min(x, w - x);
+        float laneW = w / max(lanes, 1.);
+        bool twoWay = oneway < .5;
+        float mid = abs(x - w * .5);
+        bool median = twoWay && rank > 3.5;          // primary roads and highways have a raised median
+        // kerb stones painted black and yellow, a very Bengaluru detail
+        float kerb = step(edge, .35);
+        vec3 kerbCol = step(.5, fract(along / 1.4)) > .5 ? lin(vec3(.85,.72,.12)) : lin(vec3(.05));
+        // lane dividers: white dashes between lanes (3 m paint, 6 m gap)
+        float lb = abs(fract(x / laneW + .5) - .5) * laneW;
+        float inner = step(.4 * laneW, x) * step(x, w - .4 * laneW);
+        float dash = paint(lb, .07) * inner * step(fract(along / 9.), .34);
+        // solid white edge lines on the bigger roads
+        float edgeLine = paint(abs(edge - .55), .07) * step(2.5, rank);
+        // centre of a two-way road: a double yellow line, or a raised median on the biggest roads
+        float centre = twoWay ? paint(abs(mid - .12), .05) : 0.;
+        if (twoWay) dash *= step(.3, mid);
+        if (median) { centre = 0.; dash *= step(1.2, mid); }
+        c = mix(c, lin(vec3(.85)) * Lm, max(dash, edgeLine) * .85);
+        c = mix(c, lin(vec3(.85,.66,.10)) * Lm, centre * .9);
+        c = mix(c, kerbCol * Lm, kerb);
+        if (median) {
+          float m = step(mid, 1.1);
+          float mk = step(mid, 1.1) * step(.85, mid);
+          vec3 planted = lin(vec3(.22,.33,.16)) * (.7 + .4 * vnoise(vW.xz * 2.)) * Lr;
+          c = mix(c, planted, m);
+          c = mix(c, kerbCol * Lm, mk);
+        }
+        // zebra crossing a few metres from the start of each main road
+        float zebra = step(abs(along - 6.), 1.8) * step(.5, fract(x / 1.)) * step(.6, edge);
+        c = mix(c, lin(vec3(.85)) * Lm, zebra * .8);
+      }
       gl_FragColor = vec4(fogMix(c, vDist), 1.);
     }`,
 });
@@ -622,30 +677,62 @@ export class City {
     }
   }
 
+  // Road design by class. Lanes are 3.4 m. The Outer Ring Road is mapped as two one-way carriageways of
+  // four lanes each; two-way primary roads and highways get a planted median. Main roads have sidewalks.
+  roadDesign(r) {
+    const LANE = 3.4;
+    let lanes, w = r.w;
+    if (r.f) return { w, lanes: 1, side: 0 };
+    if (r.r >= 5) lanes = r.o ? 4 : 8;
+    else if (r.r === 4) lanes = r.o ? 3 : 4;
+    else if (r.r === 3) lanes = r.o ? 3 : 4;
+    else if (r.r === 2) lanes = 2;
+    else lanes = 1;
+    if (r.r >= 2) w = lanes * LANE + (r.r >= 4 && !r.o ? 2.2 : 0) + 0.8; // + median + kerb margins
+    const side = r.r >= 4 ? 4 : r.r === 3 ? 3 : r.r === 2 ? 2 : 0;          // sidewalk each side
+    return { w, lanes, side };
+  }
+
   roads(city) {
-    const pos = [], uv = [], ar = [], idx = [];
+    const pos = [], uv = [], ar = [], ar2 = [], lc = [], idx = [];
     this.roadLines = [];
-    const sorted = [...city.roads].sort((a, b) => a.r - b.r);
-    for (const r of sorted) {
-      const p = r.p, n = p.length / 2; if (n < 2) continue;
-      const y = 0.08 + r.r * 0.01 + (r.f ? 0.002 : 0);
-      const pts = []; for (let i = 0; i < n; i++) pts.push([p[i * 2], p[i * 2 + 1]]);
-      let along = 0; const base = pos.length / 3;
+    let s = 5; const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    const LED = [0.86, 0.93, 1], SODIUM = [1, 0.6, 0.27], WARM = [1, 0.86, 0.66];
+    const ribbon = (pts, w, y, a1, a2, col) => {
+      const n = pts.length; let along = 0; const base = pos.length / 3;
       for (let i = 0; i < n; i++) {
         const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
         let dx = b[0] - a[0], dz = b[1] - a[1]; const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
         if (i > 0) along += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-        const hw = r.w / 2;
+        const hw = w / 2;
         pos.push(pts[i][0] - dz * hw, y, pts[i][1] + dx * hw, pts[i][0] + dz * hw, y, pts[i][1] - dx * hw);
-        uv.push(0, along, 1, along); ar.push(r.w, r.r, r.f, r.w, r.r, r.f);
+        uv.push(0, along, 1, along); ar.push(...a1, ...a1); ar2.push(...a2, ...a2); lc.push(...col, ...col);
         if (i > 0) { const v = base + (i - 1) * 2; idx.push(v, v + 2, v + 1, v + 1, v + 2, v + 3); }
       }
-      if (!r.f) this.roadLines.push({ pts, w: r.w, rank: r.r, len: along, oneway: r.o });
+      return along;
+    };
+    const sorted = [...city.roads].sort((a, b) => a.r - b.r);
+    for (const r of sorted) {
+      const p = r.p, n = p.length / 2; if (n < 2) continue;
+      const pts = []; for (let i = 0; i < n; i++) pts.push([p[i * 2], p[i * 2 + 1]]);
+      const d = this.roadDesign(r);
+      // street lights: every 30 m on the big roads (white LED), 36-42 m on the lanes, a mix of LED and old sodium
+      const gap = r.f ? 0 : r.r >= 3 ? 30 : r.r === 2 ? 36 : r.r === 1 ? 42 : 0;
+      const roll = rnd();
+      const col = r.r >= 3 ? LED : r.r === 2 ? (roll < 0.6 ? LED : SODIUM) : roll < 0.4 ? SODIUM : roll < 0.75 ? WARM : LED;
+      const phase = rnd() * (gap || 1);
+      // sidewalks sit just under every carriageway, so a road always draws over a neighbour's pavement
+      if (d.side) ribbon(pts, d.w + d.side * 2, 0.075, [d.w + d.side * 2, r.r, 2], [1, 0, phase, gap], col);
+      const y = 0.08 + r.r * 0.01 + (r.f ? 0.002 : 0);
+      const len = ribbon(pts, d.w, y, [d.w, r.r, r.f], [d.lanes, r.o, phase, gap], col);
+      if (!r.f) this.roadLines.push({ pts, w: d.w, lanes: d.lanes, rank: r.r, len, oneway: r.o, phase, gap, col });
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.setAttribute('aRoad', new THREE.Float32BufferAttribute(ar, 3));
+    g.setAttribute('aRoad2', new THREE.Float32BufferAttribute(ar2, 4));
+    g.setAttribute('aLamp', new THREE.Float32BufferAttribute(lc, 3));
     g.setIndex(idx);
     const m = roadMat(); this.mats.push(m);
     const mesh = new THREE.Mesh(g, m); mesh.renderOrder = 1; this.world.add(mesh);
@@ -724,18 +811,21 @@ export class City {
   // street lamps: positions from the map, plus regular spacing along the roads the map hasn't covered
   lamps(city) {
     const spots = [];
-    for (let i = 0; i < (city.lamps || []).length; i += 2) spots.push([city.lamps[i], city.lamps[i + 1], 1]);
+    for (let i = 0; i < (city.lamps || []).length; i += 2) spots.push([city.lamps[i], city.lamps[i + 1], [1, 0.86, 0.66]]);
     let s = 3; const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    // the same spacing and phase the road shader uses, so each lamp sits on the brightest patch of its road
     for (const r of this.roadLines) {
-      if (r.rank < 1) continue;
-      const gap = r.rank >= 3 ? 30 : 42;
-      let carry = rnd() * gap;
+      if (!r.gap) continue;
+      const gap = r.gap;
+      let carry = r.phase, k = 0;
       for (let i = 1; i < r.pts.length; i++) {
-        const a = r.pts[i - 1], b = r.pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 1) continue;
+        const a = r.pts[i - 1], b = r.pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (L < 1e-3) continue;
         const dx = (b[0] - a[0]) / L, dz = (b[1] - a[1]) / L;
-        for (let t = carry; t < L; t += gap) {
-          const side = r.rank >= 3 ? (Math.floor(t / gap) % 2 ? 1 : -1) : 1, off = r.w / 2 - 0.6;
-          spots.push([a[0] + dx * t - dz * off * side, a[1] + dz * t + dx * off * side, r.rank >= 2 ? 1 : rnd() < 0.3 ? 2 : 1]);
+        for (let t = carry; t < L; t += gap, k++) {
+          // big roads: lamps on the median or alternating sides; lanes: one side
+          const side = r.rank >= 3 ? (k % 2 ? 1 : -1) : 1, off = r.rank >= 4 && !r.oneway ? 0 : r.w / 2 + 0.4;
+          spots.push([a[0] + dx * t - dz * off * side, a[1] + dz * t + dx * off * side, r.col]);
         }
         carry = ((carry - L) % gap + gap) % gap;
       }
@@ -747,8 +837,7 @@ export class City {
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
     const heads = [], headCol = [];
     for (let i = 0; i < n; i++) {
-      const [x, z, kind] = spots[i];
-      const roll = (i * 0.618) % 1; const c = kind === 2 || roll < 0.2 ? [1, 0.58, 0.24] : roll < 0.3 ? [1, 0.95, 0.85] : [0.82, 0.9, 1];
+      const [x, z, c] = spots[i];
       cols.set(c, i * 3);
       m4.compose(new THREE.Vector3(x, 0.2, z), q, new THREE.Vector3(24, 1, 24)); pools.setMatrixAt(i, m4);
       heads.push(x, 8.5, z); headCol.push(c[0] * 3, c[1] * 3, c[2] * 3);
@@ -836,7 +925,18 @@ export class City {
       for (let c = 0; c < count; c++) for (const dir of r.oneway ? [1] : [1, -1]) {
         const roll = Math.random();
         const k = r.rank <= 1 ? (roll < 0.75 ? 2 : 0) : r.rank >= 4 && roll < 0.05 ? 3 : roll < 0.42 ? 2 : roll < 0.62 ? 1 : 0;
-        lanes.push({ r, cum, q: Math.random(), d: Math.random() * r.len, v: (r.rank >= 4 ? 9 : r.rank >= 2 ? 7 : 5) + Math.random() * 4, dir, off: (r.w * (r.oneway ? 0.1 : 0.24) + (k === 2 ? 0.8 : 0)) * dir * (Math.random() < 0.5 ? 1 : 0.7), k });
+        // pick a lane. India drives on the left: on a two-way road each direction keeps to its own half
+        // (bikes hug the kerb), and a one-way carriageway uses every lane.
+        const nl = Math.max(1, r.lanes || 1), laneW = r.w / nl;
+        let off;
+        if (r.oneway) off = -r.w / 2 + (Math.floor(Math.random() * nl) + 0.5) * laneW;
+        else if (nl < 2) off = -(r.w * 0.24) * dir;
+        else {
+          const half = Math.max(1, Math.floor(nl / 2)), lane = k === 2 ? half - 1 : Math.floor(Math.random() * half);
+          const median = r.rank >= 4 ? 1.1 : 0;
+          off = -(median + (lane + 0.5) * ((r.w / 2 - median) / half)) * dir;
+        }
+        lanes.push({ r, cum, q: Math.random(), d: Math.random() * r.len, v: (r.rank >= 4 ? 9 : r.rank >= 2 ? 7 : 5) + Math.random() * 4, dir, off, k });
       }
     }
     this.cars = lanes.slice(0, 2400);
