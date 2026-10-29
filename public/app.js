@@ -1,4 +1,4 @@
-// ToTheDoor live screen: a night-time 3D city (three.js, built from OpenStreetMap) + the live call.
+// Skyline live screen: a night-time 3D city (three.js, built from OpenStreetMap) + the live call.
 // Everything on the map is driven by server events: where the agent believes the rider is, the door path, the home.
 import * as THREE from 'three';
 import { City } from './city3d.js';
@@ -32,6 +32,8 @@ async function boot() {
   useCityFor(saved0 || { lat: 12.9128, lng: 77.6374 });
   bindUi();
   bindLine();
+  $('#tgFab').onclick = () => toggleTg();
+  $('#tgClose').onclick = () => toggleTg(false);
   setView('mind');
   listen();
   refreshExpect();
@@ -103,7 +105,7 @@ async function setHome(h, persist = true, { sender = false } = {}) {
   setTimeout(() => veil(false), 350);
   window.dispatchEvent(new Event('ttd-home'));
   renderConsent();
-  if (!callActive) status(expecting ? 'Someone is on the way' : 'Answering for Sam', expecting);
+  if (!callActive) status(expecting ? 'Someone is on the way' : '', expecting);
 }
 
 // a point of the OpenStreetMap bake (x east, z south of data.origin, metres) in the current renderer's frame
@@ -170,7 +172,7 @@ const stopNode = (num, label, cls = '') => el('div', 'stop' + (cls ? ' ' + cls :
 
 function renderRibbon() {
   const r = $('#ribbon'); r.innerHTML = '';
-  if (!taught) { r.append(el('div', 'stop now', '<span class="num">?</span><span class="lbl">Door not taught yet. Call ToTheDoor to teach it.</span>')); return; }
+  if (!taught) { r.append(el('div', 'stop now', '<span class="num">?</span><span class="lbl">Door not taught yet. Call Skyline to teach it.</span>')); return; }
   r.append(stopNode('S', clip(door.anchor.name)));
   door.steps.forEach((s, i) => r.append(i === door.steps.length - 1 ? stopNode('⌂', doorText(door.door), 'home') : stopNode(i + 1, stopLabel(s))));
   markRibbon();
@@ -198,10 +200,15 @@ function placeRider(p, step, label, { frame = true } = {}) {
 }
 
 // ======================= call panel =======================
+// the one-line summary of the call in progress, over the top bar. Hidden when there's nothing live.
 function status(text, live, done) {
-  $('#statusText').textContent = text;
-  $('#statusChip').classList.toggle('live', !!live); $('#statusChip').classList.toggle('done', !!done);
+  const strip = $('#nowStrip');
+  if (!text || (!live && !done)) { strip.hidden = true; return; }
+  strip.hidden = false;
+  strip.className = 'now-strip' + (done ? ' done' : live ? ' live' : '');
+  $('#nowText').textContent = text;
 }
+function nowTime(s) { $('#nowTime').textContent = s || ''; }
 function tag(text, kind) { const t = $('#callTag'); t.textContent = text; t.className = 'tag' + (kind ? ' ' + kind : ''); }
 function clearEmpty() { $('#empty')?.remove(); }
 
@@ -229,7 +236,7 @@ function endCall() {
 }
 function line(role, text) {
   clearEmpty();
-  const by = role === 'rider' || role === 'caller' ? (live?.kind === 'delivery' ? 'Rider' : $('#callerName').textContent || 'Caller') : role === 'customer' ? 'Sam' : callKind === 'calibration' ? 'ToTheDoor' : "Sam's line";
+  const by = role === 'rider' || role === 'caller' ? (live?.kind === 'delivery' ? 'Rider' : $('#callerName').textContent || 'Caller') : role === 'customer' ? 'Sam' : 'Varun';
   // callers share the rider's bubble (".caller" is the call card's class)
   const m = el('div', 'msg ' + (role === 'caller' ? 'rider' : role), `<span class="by">${esc(by)}</span><div class="b">${esc(text)}</div>`);
   $('#stream').append(m); scroll();
@@ -258,6 +265,15 @@ function tg(text, from = 'bot', buttons = null) {
   }
   f.prepend(li);
   $('#tgCount').textContent = f.children.length + (f.children.length === 1 ? ' message' : ' messages');
+  // bump the unread badge on the floating button unless the popover is open
+  if ($('#tgPop').hidden) { tgUnread++; const c = $('#tgFabCount'); c.hidden = false; c.textContent = tgUnread; $('#tgFab').classList.add('ping'); setTimeout(() => $('#tgFab').classList.remove('ping'), 600); }
+}
+let tgUnread = 0;
+function toggleTg(open) {
+  const pop = $('#tgPop'), on = open ?? pop.hidden;
+  pop.hidden = !on;
+  $('#tgFab').classList.toggle('on', on);
+  if (on) { tgUnread = 0; $('#tgFabCount').hidden = true; }
 }
 // once a visit is answered (here, on Telegram, or by the hour running out) its buttons stop working
 const answered = (vid) => document.querySelectorAll(`.tgbtn[data-visit="${vid}"]`).forEach((b) => (b.disabled = true));
@@ -400,9 +416,9 @@ async function startSender(id) {
   $('#guideNumber').textContent = sender.guide_number;
   $('#apiKey').textContent = sender.api_key;
   const e = $('#empty');
-  if (e) { e.querySelector('h3').textContent = 'No rider needs help right now'; e.querySelector('p').textContent = `When a ${sender.name} rider can't find the door and taps Call customer, ToTheDoor answers. The call shows up here, and on the map.`; }
-  $('#dock').hidden = true; $('#viewToggle').hidden = true; setView('map');
-  document.querySelector('.phone-head').firstChild.nextSibling.textContent = "Sam's phone · a receiver";
+  if (e) { e.querySelector('h3').textContent = 'No rider needs help right now'; e.querySelector('p').textContent = `When a ${sender.name} rider can't find the door and taps Call customer, Skyline answers. The call shows up here, and on the map.`; }
+  $('#dock').hidden = true; document.body.classList.add('is-sender'); setView('map');
+  $('#tgPop').querySelector('b').textContent = "Receiver's phone";
   renderSenderStats(sender.stats);
   renderOrders();
   $('#ribbon').parentElement.hidden = true;
@@ -417,7 +433,7 @@ function renderSenderStats(st) {
 }
 let statsT = null;
 const refreshStats = () => { clearTimeout(statsT); statsT = setTimeout(async () => { if (!sender) return; const s2 = await (await fetch('/api/sender?id=' + sender.id)).json(); renderSenderStats(s2.stats); }, 400); };
-const ST = { assigned: 'Assigned', picked_up: 'Picked up', en_route: 'On the way', arrived: 'At the door', stuck: "Can't find it", guiding: 'ToTheDoor guiding', delivered: 'Delivered', failed: 'Failed' };
+const ST = { assigned: 'Assigned', picked_up: 'Picked up', en_route: 'On the way', arrived: 'At the door', stuck: "Can't find it", guiding: 'Skyline guiding', delivered: 'Delivered', failed: 'Failed' };
 function renderOrders() {
   const ol = $('#orders'); ol.innerHTML = '';
   if (!fleet.size) { ol.append(el('li', 'none', 'No riders out. Run a delivery shift to see them on the map.')); return; }
@@ -451,7 +467,7 @@ function onOrder(e) {
     const f = fleet.get(e.order); if (!f) return;
     f.o.status = e.status;
     if (f.pin) { f.pin.node.classList.toggle('stuck', e.status === 'stuck'); f.pin.node.classList.toggle('delivered', e.status === 'delivered'); }
-    // ToTheDoor takes the call: this rider's door path appears, and the call view follows him from here
+    // Skyline takes the call: this rider's door path appears, and the call view follows him from here
     if (e.status === 'guiding') {
       if (f.pin) f.pin.node.hidden = true;
       taught = true; city.setPath([door.anchor, ...door.steps]);
@@ -648,7 +664,6 @@ function setView(v) {
   view = v;
   const st = document.querySelector('.stage');
   st.classList.toggle('view-map', v === 'map'); st.classList.toggle('view-mind', v !== 'map');
-  $('#viewToggle').textContent = v === 'map' ? "Sam's line" : 'Door map';
 }
 function showLineView() { clearTimeout(backT); $('#liveView').hidden = true; $('#lineView').hidden = false; if (!sender) setView('mind'); }
 
@@ -661,9 +676,19 @@ const reloadLine = () => { clearTimeout(lineT); lineT = setTimeout(loadLine, 250
 
 function renderLine() {
   const P = LINE.profile;
+  $('#ownerTag').textContent = `Varun is answering for ${P.owner}`;
   document.querySelectorAll('#modeSeg button').forEach((b) => { b.classList.toggle('on', b.dataset.mode === P.mode); b.setAttribute('aria-pressed', String(b.dataset.mode === P.mode)); });
-  $('#modeNote').textContent = { available: 'Sam is available: close ones and VIPs can get him right away. Everyone else is handled by the rules.', busy: `Sam is in a meeting${P.busy_until ? ' till ' + P.busy_until : ''}: everyone hears he's busy, messages go to his phone.`, sleep: 'Sam is asleep: nobody reaches him unless they say his code.' }[P.mode];
+  $('#modeNote').textContent = { available: `${P.owner} is available: close ones and VIPs can get him right away. Everyone else is handled by the rules.`, busy: `${P.owner} is in a meeting${P.busy_until ? ' till ' + P.busy_until : ''}: everyone hears he's busy, messages go to his phone.`, sleep: `${P.owner} is asleep: nobody reaches him unless they say his code.` }[P.mode];
   $('#codeVal').textContent = $('#codeChip').dataset.show ? P.passcode : '•••••';
+  // today's call counts, from the log
+  const today = new Date().toDateString();
+  const todays = LINE.calls.filter((c) => new Date(c.at).toDateString() === today);
+  const blocked = todays.filter((c) => c.kind === 'blocked' || c.learned === 'blocked').length;
+  const passed = todays.filter((c) => (c.actions || []).some((a) => /alerted|passcode/i.test(a))).length;
+  $('#ctTotal').textContent = todays.length;
+  $('#ctHandled').textContent = todays.length - blocked - passed;
+  $('#ctBlocked').textContent = blocked;
+  $('#ctPassed').textContent = passed;
   // the call log
   const log = $('#callLog'); log.innerHTML = '';
   if (!LINE.calls.length) log.append(el('li', 'none-note', 'No calls yet. Try one from the right.'));
@@ -813,6 +838,8 @@ function onLineTool(tool, out, args) {
     if (name) liveWho(name, null);
     liveRule(out.kind, out.budget);
     liveStep(`heard <b>"${esc(args?.purpose || args?.org || '')}"</b> → ${esc(KLABEL[out.kind])}${out.budget ? ` · ${out.budget}s limit` : ''}`, out.kind === 'sales' ? 'bad' : 'ok');
+    const who = [args?.name, args?.org].filter(Boolean).join(', ') || showNum(live.number);
+    if (out.kind !== 'delivery') status(`${who} — ${KLABEL[out.kind].toLowerCase()}${out.kind === 'sales' ? ', declining' : out.briefing ? ', on your briefing' : ''}`, true);
     if (out.briefing) showBrief(out.briefing);
     if (out.kind === 'delivery') {
       liveStep(out.verified ? `<b>Expected ${esc(cap(out.service))} order</b> · opening the door map` : '<b>Not expected</b> · asking Sam before giving anything away', out.verified ? 'ok' : 'bad');
@@ -838,16 +865,18 @@ function onLineEnded(rec) {
 }
 // the time limit for this kind of caller, filling up as the call goes
 setInterval(() => {
-  if (!live || live.ended || !live.budget) return;
-  const s = Math.round((Date.now() - live.start) / 1000), f = s / live.budget;
+  if (!live || live.ended) return;
+  const s = Math.round((Date.now() - live.start) / 1000);
+  nowTime(`${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`);
+  if (!live.budget) return;
+  const f = s / live.budget;
   $('#lcBar').style.width = Math.min(100, f * 100) + '%';
   $('#lcBar').className = f > 1 ? 'over' : f > 0.75 ? 'warn' : '';
   $('#lcTime').textContent = f > 1 ? `${s}s · ${s - live.budget}s over` : `${s}s of ${live.budget}s`;
 }, 500);
 
 function bindLine() {
-  $('#viewToggle').onclick = () => { if (view === 'map') { setView('mind'); if (!live || live.ended) showLineView(); } else setView('map'); };
-  $('#backLine').onclick = showLineView;
+
   document.querySelectorAll('#modeSeg button').forEach((b) => (b.onclick = async () => { await post('/api/line/mode', { mode: b.dataset.mode }); loadLine(); }));
   $('#codeChip').onclick = () => { const c = $('#codeChip'); if (c.dataset.show) delete c.dataset.show; else c.dataset.show = '1'; renderLine(); };
   $('#personAdd').onsubmit = async (ev) => {

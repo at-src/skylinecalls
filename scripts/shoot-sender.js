@@ -1,4 +1,4 @@
-// Screenshots of the sender view (Zepto): a delivery shift with live riders, one guided in by ToTheDoor.
+// Screenshots of the sender view (Zepto): a delivery shift with live riders, one guided in by Skyline.
 // Usage: node scripts/shoot-sender.js  ->  scripts/sender-<n>.jpg
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

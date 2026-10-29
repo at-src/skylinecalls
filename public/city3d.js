@@ -1,4 +1,4 @@
-// ToTheDoor city renderer: an Indian neighbourhood through the day and night, built from OpenStreetMap in three.js.
+// Skyline city renderer: an Indian neighbourhood through the day and night, built from OpenStreetMap in three.js.
 // Every building is drawn by type (house, apartment, shops, office, civic, temple, shed) with its own colours,
 // floors, windows, balconies, shop signboards and rooftop water tanks. Land use colours the ground (parks, pitches,
 // construction, water). Street lights come from the map; traffic runs where the roads are busy.

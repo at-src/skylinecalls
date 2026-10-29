@@ -16,7 +16,7 @@ export async function fetchOsm(lat, lng, halfM = 850) {
   const dLat = halfM / M_LAT, dLng = halfM / mLng(lat);
   const box = [lng - dLng, lat - dLat, lng + dLng, lat + dLat].map((v) => v.toFixed(5)).join(',');
   const r = await fetch(`https://api.openstreetmap.org/api/0.6/map?bbox=${box}`, {
-    headers: { 'User-Agent': 'ToTheDoor-hackathon/0.1 (local demo)' }, signal: AbortSignal.timeout(120000),
+    headers: { 'User-Agent': 'Skyline-hackathon/0.1 (local demo)' }, signal: AbortSignal.timeout(120000),
   });
   if (!r.ok) throw new Error(`OSM ${r.status}: ${(await r.text()).slice(0, 120)}`);
   return r.text();

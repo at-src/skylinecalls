@@ -1,4 +1,4 @@
-/* ToTheDoor live screen. Flat dark surfaces, one typeface, token spacing, weighted motion. */
+/* Skyline live screen. Flat dark surfaces, one typeface, token spacing, weighted motion. */
 :root {
   --bg: #0b0b0a; --surface: #131311; --raise: #1b1b18; --raise2: #232320;
   --line: rgba(255, 255, 255, 0.07); --line2: rgba(255, 255, 255, 0.12);
@@ -444,3 +444,99 @@ body.role-sender .side { grid-template-rows: auto auto auto 1fr auto auto; }
 .dock .hint { margin-top: 6px; min-height: 0; }
 .phone { max-height: 24vh; }
 .kinds .kchip:not(.on) { background: var(--raise); color: var(--faint); }
+/* ============ Skyline layout: left top bar + now strip, map-only chrome, context panel ============ */
+/* top bar is always visible, above both the map and the context panel */
+.topbar { position: absolute; top: 0; left: 0; right: 0; z-index: 6; display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
+  padding: var(--s3) var(--s5); background: linear-gradient(180deg, rgba(10,10,9,0.92), rgba(10,10,9,0.72) 70%, transparent); backdrop-filter: blur(8px); }
+.tb-brand { display: flex; align-items: center; gap: var(--s2); }
+.tb-brand .mark { width: 14px; height: 18px; }
+.tb-brand div { display: flex; flex-direction: column; line-height: 1.1; }
+.tb-brand b { font-size: 15px; font-weight: 600; }
+.tb-brand span { font-size: 11px; color: var(--muted); }
+.tb-right { display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap; justify-content: flex-end; }
+.counts { display: flex; gap: var(--s2); }
+.counts .ct { display: flex; flex-direction: column; align-items: center; min-width: 46px; padding: 4px var(--s2); border-radius: var(--r-sm); background: rgba(255,255,255,0.04); border: 1px solid var(--line); }
+.counts .ct b { font-size: 18px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.counts .ct span { font-size: 10px; line-height: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.counts .ct.ok b { color: var(--go); } .counts .ct.stop b { color: var(--stop); } .counts .ct.live b { color: var(--amber); }
+.topbar .seg { background: rgba(15,15,13,0.72); backdrop-filter: blur(14px); border: 1px solid var(--line2); }
+
+/* the live one-line summary, just under the top bar */
+.now-strip { position: absolute; top: 58px; left: var(--s5); z-index: 6; display: flex; align-items: center; gap: var(--s2);
+  padding: 6px var(--s3); border-radius: 99px; font-size: 13px; line-height: 18px; color: var(--text);
+  background: rgba(15,15,13,0.82); backdrop-filter: blur(14px); border: 1px solid var(--line2); animation: up 400ms var(--ease) both; max-width: calc(100% - 2 * var(--s5)); }
+.now-strip[hidden] { display: none; }
+.now-strip .dot { width: 8px; height: 8px; border-radius: 99px; background: var(--amber); box-shadow: 0 0 0 0 rgba(245,184,74,0.6); animation: led 1.6s var(--ease) infinite; flex: none; }
+.now-strip.done .dot { background: var(--go); animation: none; }
+.now-strip #nowText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now-strip .now-time { font-family: "Geist Mono", monospace; font-size: 12px; color: var(--muted); }
+
+/* the map chrome only shows in map view */
+.stage.view-mind .map-only { display: none !important; }
+.stage.view-map .mind { opacity: 0; pointer-events: none; }
+/* the context panel sits below the top bar */
+.mind { padding: 84px var(--s6) var(--s6); background: radial-gradient(1200px 600px at 20% -6%, #17171a 0%, var(--bg) 62%); }
+.lv-grid { grid-template-columns: 1.1fr 1fr; }
+.calls-box { grid-row: span 2; }
+.context-box { grid-column: 2; }
+.code-row { margin-bottom: var(--s3); }
+@media (max-width: 1250px) { .calls-box, .context-box { grid-row: auto; grid-column: auto; } }
+
+/* live-view header without the back button */
+.lc-who .lc-id { flex: 1; min-width: 0; }
+
+/* sender hides the dock and context */
+body.is-sender .dock, body.is-sender .now-strip { display: none !important; }
+/* ============ idle state: a sleeping rabbit, and the connected-app floating button ============ */
+.empty { gap: 0; }
+.empty h3 { font-size: 20px; line-height: 28px; margin: var(--s5) 0 var(--s2); }
+.empty p { font-size: 14px; line-height: 21px; color: var(--muted); max-width: 320px; margin: 0 auto; }
+
+/* sleeping rabbit, drawn in CSS, gently breathing with floating z's */
+.rabbit { position: relative; width: 160px; height: 110px; margin: 0 auto; }
+.rabbit .bun { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); width: 120px; height: 66px; animation: breathe 3.4s var(--ease) infinite; transform-origin: 50% 100%; }
+.rabbit .body { position: absolute; left: 10px; bottom: 0; width: 108px; height: 46px; border-radius: 48px 52px 46px 40px; background: linear-gradient(160deg, #3a3a44, #26262c); box-shadow: inset 0 3px 6px rgba(255,255,255,0.05); }
+.rabbit .head { position: absolute; left: 64px; bottom: 16px; width: 52px; height: 46px; border-radius: 50% 52% 48% 50%; background: linear-gradient(160deg, #42424d, #2b2b31); }
+.rabbit .ear { position: absolute; width: 16px; height: 46px; border-radius: 10px; background: linear-gradient(180deg, #42424d, #2b2b31); bottom: 44px; }
+.rabbit .ear::after { content: ""; position: absolute; inset: 5px 4px; border-radius: 8px; background: #d98fa8; opacity: 0.55; }
+.rabbit .ear.left { left: 92px; transform: rotate(14deg); transform-origin: bottom center; }
+.rabbit .ear.right { left: 104px; transform: rotate(30deg); transform-origin: bottom center; }
+.rabbit .eye { position: absolute; left: 14px; top: 20px; width: 11px; height: 3px; border-radius: 3px; background: #11111a; box-shadow: 0 0 0 0 #000; }
+.rabbit .nose { position: absolute; left: 2px; top: 26px; width: 6px; height: 5px; border-radius: 50%; background: #d98fa8; }
+.rabbit .whisk { position: absolute; left: -10px; top: 28px; width: 18px; height: 1px; background: rgba(255,255,255,0.25); box-shadow: 0 4px rgba(255,255,255,0.18), 0 -4px rgba(255,255,255,0.18); }
+.rabbit .paw { position: absolute; left: 50px; bottom: -2px; width: 26px; height: 16px; border-radius: 50%; background: #45454f; }
+.rabbit .zzz { position: absolute; right: 18px; top: 0; }
+.rabbit .zzz span { position: absolute; font-family: "Geist", sans-serif; font-weight: 600; color: var(--amber); opacity: 0; }
+.rabbit .zzz span:nth-child(1) { font-size: 13px; animation: zfloat 3s ease-in-out infinite; }
+.rabbit .zzz span:nth-child(2) { font-size: 17px; left: 10px; animation: zfloat 3s ease-in-out infinite 1s; }
+.rabbit .zzz span:nth-child(3) { font-size: 22px; left: 22px; animation: zfloat 3s ease-in-out infinite 2s; }
+@keyframes breathe { 0%, 100% { transform: translateX(-50%) scaleY(1); } 50% { transform: translateX(-50%) scaleY(1.04); } }
+@keyframes zfloat { 0% { opacity: 0; transform: translate(0, 0) scale(0.7); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(14px, -34px) scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { .rabbit .bun, .rabbit .zzz span { animation: none; } .rabbit .zzz span { opacity: 0.5; } }
+
+/* floating connected-app button, bottom-right over the call panel (like the Grok dock on X) */
+.tg-fab { position: fixed; right: 20px; bottom: 90px; z-index: 30; width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
+  background: linear-gradient(160deg, #2aa3e0, #1d7fb8); color: #fff; box-shadow: 0 10px 30px rgba(42,163,224,0.35), inset 0 1px 0 rgba(255,255,255,0.25);
+  transition: transform 300ms var(--ease), box-shadow 300ms var(--ease); }
+.tg-fab svg { width: 26px; height: 26px; fill: #fff; }
+.tg-fab:hover { transform: translateY(-2px); box-shadow: 0 14px 38px rgba(42,163,224,0.45); }
+.tg-fab:active { transform: scale(0.95); }
+.tg-fab.on { background: linear-gradient(160deg, #37b0ed, #2186c0); }
+.tg-fab.ping { animation: fabping 600ms var(--ease); }
+@keyframes fabping { 0%, 100% { transform: none; } 30% { transform: translateY(-4px) scale(1.08); } }
+.tg-badge { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 99px; background: var(--stop); color: #fff; font-size: 11px; font-weight: 600; display: grid; place-items: center; border: 2px solid var(--bg); }
+/* the popover feed the button opens */
+.tg-pop { position: fixed; right: 20px; bottom: 148px; z-index: 30; width: min(380px, calc(100vw - 40px)); max-height: min(60vh, 520px);
+  display: flex; flex-direction: column; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line2);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5); animation: pop 300ms var(--ease) both; overflow: hidden; }
+.tg-pop[hidden] { display: none; }
+@keyframes pop { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
+.tg-pop-head { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); font-size: 14px; }
+.tg-pop-head .count { color: var(--faint); font-size: 12px; }
+.tg-ic { width: 18px; height: 18px; border-radius: 99px; background: #2aa3e0; position: relative; flex: none; }
+.tg-ic::after { content: ""; position: absolute; left: 4px; top: 6px; width: 8px; height: 6px; background: #fff; clip-path: polygon(0 50%, 100% 0, 70% 100%); }
+.tg-x { margin-left: auto; width: 26px; height: 26px; border-radius: 8px; color: var(--muted); font-size: 18px; line-height: 1; }
+.tg-x:hover { color: var(--text); background: var(--raise2); }
+.tg-pop .tg-feed { padding: var(--s3) var(--s4); gap: var(--s2); overflow-y: auto; }
+/* the old inline phone panel is gone; keep the feed items styled (reused in the popover) */
+.phone { display: none !important; }

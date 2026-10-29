@@ -120,12 +120,12 @@ async function upsert(envKey, body) {
 
 const guidePrompt = GUIDE_PROMPT.replace('{visit_hint}', '. If the call context below has a visit_id, pass it too').replaceAll('{customer_name}', '{customer_name}')
   + '\n\nCall context: customer_name = {customer_name}; visit_id = {visit_id}.';
-const guideId = await upsert('BOLNA_GUIDE_AGENT_ID', agentBody({ name: 'ToTheDoor guide', welcome: GUIDE_WELCOME, prompt: guidePrompt, tools: apiTools }));
-const alertId = await upsert('BOLNA_ALERT_AGENT_ID', agentBody({ name: 'ToTheDoor customer alert', welcome: 'Hello, {customer_name}?', prompt: ALERT_PROMPT, terminate: 90 }));
-const calibId = await upsert('BOLNA_CALIB_AGENT_ID', agentBody({ name: 'ToTheDoor teach the door', welcome: CALIB_WELCOME, prompt: CALIB_PROMPT + '\n\nCall context: customer_name = {customer_name}; door_id = {door_id}.', tools: toolsFor(CALIB_DEFS), terminate: 600 }));
+const guideId = await upsert('BOLNA_GUIDE_AGENT_ID', agentBody({ name: 'Skyline guide', welcome: GUIDE_WELCOME, prompt: guidePrompt, tools: apiTools }));
+const alertId = await upsert('BOLNA_ALERT_AGENT_ID', agentBody({ name: 'Skyline customer alert', welcome: 'Hello, {customer_name}?', prompt: ALERT_PROMPT, terminate: 90 }));
+const calibId = await upsert('BOLNA_CALIB_AGENT_ID', agentBody({ name: 'Skyline teach the door', welcome: CALIB_WELCOME, prompt: CALIB_PROMPT + '\n\nCall context: customer_name = {customer_name}; door_id = {door_id}.', tools: toolsFor(CALIB_DEFS), terminate: 600 }));
 const linePrompt = LINE_PROMPT + '\n\nCall context: owner = {owner}; caller_number = {caller_number}.';
 const lineTools = toolsFor([...LINE_DEFS, ...TOOL_DEFS.filter(([n]) => n !== 'verify_caller')]);
-const lineBody = agentBody({ name: "ToTheDoor · Sam's line", welcome: LINE_WELCOME, prompt: linePrompt, tools: lineTools, terminate: 600 });
+const lineBody = agentBody({ name: "Skyline · Varun", welcome: LINE_WELCOME, prompt: linePrompt, tools: lineTools, terminate: 600 });
 lineBody.agent_config.tasks[0].tools_config.transcriber.keywords = [...KEYWORDS, ...LINE_KEYWORDS].join(', ');
 const lineId = await upsert('BOLNA_LINE_AGENT_ID', lineBody);
 writeFileSync('.env', env);

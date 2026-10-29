@@ -17,7 +17,7 @@ const VARUN = '4cd9f881-58f7-4969-876a-00983214c362'; // Cartesia sonic-3, male 
 
 const agent = {
   agent_config: {
-    agent_name: 'ToTheDoor connection test',
+    agent_name: 'Skyline connection test',
     agent_welcome_message: 'Hello?',
     tasks: [{
       task_type: 'conversation',

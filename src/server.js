@@ -1,4 +1,4 @@
-// ToTheDoor server: Bolna tool endpoints, Telegram bot, rider position/simulator, live event feed.
+// Skyline server: Bolna tool endpoints, Telegram bot, rider position/simulator, live event feed.
 // Plain node:http, no dependencies.
 import { createServer } from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
@@ -332,4 +332,4 @@ export function start(port = PORT) {
   }));
 }
 
-if (process.argv[1] && process.argv[1].endsWith('server.js')) start().then(() => console.log(`ToTheDoor on http://localhost:${PORT}`));
+if (process.argv[1] && process.argv[1].endsWith('server.js')) start().then(() => console.log(`Skyline on http://localhost:${PORT}`));

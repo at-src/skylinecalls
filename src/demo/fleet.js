@@ -1,4 +1,4 @@
-// Scripted sender shift: a company's riders out on deliveries across HSR Layout, their app (with the ToTheDoor SDK)
+// Scripted sender shift: a company's riders out on deliveries across HSR Layout, their app (with the Skyline SDK)
 // sending each rider's live location through the real sender API functions. One rider is heading to Sam, who taught
 // his door: near Agara he can't find it, taps "Call customer", and the guided call plays through the real tools
 // (demo/replay.js). The others deliver on their own; two go to customers with no door path yet, who get asked in the
@@ -84,7 +84,7 @@ export async function fleet(TOOLS, { sender = 'zepto', pace = 1 } = {}) {
         moving++;
         if (p.i >= p.pts.length - 1) {
           if (p.guided) {
-            // the rider for Sam can't find the door: he taps "Call customer" in the app and reaches ToTheDoor
+            // the rider for Sam can't find the door: he taps "Call customer" in the app and reaches Skyline
             p.paused = true;
             orderStatus(getOrder(p.order), { status: 'stuck', note: 'rider tapped Call customer' });
           } else {

@@ -1,6 +1,6 @@
-// Senders: the companies that send someone to a door (Zepto, Amazon, Uber...). Their app talks to ToTheDoor through
+// Senders: the companies that send someone to a door (Zepto, Amazon, Uber...). Their app talks to Skyline through
 // the sender API (an SDK in the rider app): it registers each order with the receiver and the rider, streams the
-// rider's live location, and reports the order's status. Their riders' "Call customer" button reaches ToTheDoor, which
+// rider's live location, and reports the order's status. Their riders' "Call customer" button reaches Skyline, which
 // already knows the receiver's door path and guides them in. A receiver who hasn't taught their door yet is asked to,
 // in the sender's own app ("set up doorstep directions"), so the next order arrives with no call at all.
 import { load, save, emit, id } from './store.js';
@@ -59,7 +59,7 @@ export function registerOrder(sender, b) {
   if (taught && allowed) {
     const v = createVisit({ service: sender, door_id, source: `sender:${sender}` });
     o.visit_id = v.id;
-    notify(`📦 ${S.name} order ${o.order_id} is on its way. If the rider can't find the door, ToTheDoor will guide them in.`);
+    notify(`📦 ${S.name} order ${o.order_id} is on its way. If the rider can't find the door, Skyline will guide them in.`);
   }
   putOrder(o);
   emit('order.created', { order: o.id, sender, order_id: o.order_id, receiver: o.receiver, rider: o.rider, guided: !!o.visit_id });
