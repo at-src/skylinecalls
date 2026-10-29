@@ -62,5 +62,30 @@ for (const a of load('parks')) {
     plant(lat, lon, 8 + rnd() * 10, kind()); park++;
   }
 }
+// open land: where nothing is built for a stretch (village edges, empty plots, fields), clumps of trees rather than bare
+// ground. No buildings are invented: a sparse place stays sparse, just green.
+const CELL = 40; // m
+const built = new Set();
+const cellOf = (lat, lon) => `${Math.floor((lon * mLon) / CELL)},${Math.floor((lat * mLat) / CELL)}`;
+for (const b of load('buildings')) {
+  for (const p of b.geometry || []) {
+    const [i, j] = cellOf(p.lat, p.lon).split(',').map(Number);
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) built.add(`${i + di},${j + dj}`); // and a margin round it
+  }
+}
+let open = 0;
+const [i0, i1] = [Math.floor(((W - M) * mLon) / CELL), Math.ceil(((E + M) * mLon) / CELL)];
+const [j0, j1] = [Math.floor(((S - M) * mLat) / CELL), Math.ceil(((N + M) * mLat) / CELL)];
+for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+  if (built.has(`${i},${j}`) || rnd() > 0.4) continue;
+  // a clump of 3 to 8 trees, a few metres apart, somewhere in the cell
+  const cx = (i + 0.2 + rnd() * 0.6) * CELL, cz = (j + 0.2 + rnd() * 0.6) * CELL;
+  const n = 3 + Math.floor(rnd() * 6);
+  for (let k = 0; k < n; k++) {
+    const a = rnd() * Math.PI * 2, r = 2 + rnd() * 11;
+    plant((cz + Math.sin(a) * r) / mLat, (cx + Math.cos(a) * r) / mLon, 7 + rnd() * 10, kind());
+    open++;
+  }
+}
 fs.writeFileSync(path.join(dir, 'trees.csv'), out.join('\n') + '\n');
-console.log(`[trees] ${city.name}: ${avenue} avenue trees, ${park} park trees -> ${path.join(dir, 'trees.csv')}`);
+console.log(`[trees] ${city.name}: ${avenue} avenue trees, ${park} park trees, ${open} on open land -> ${path.join(dir, 'trees.csv')}`);

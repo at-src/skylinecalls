@@ -265,6 +265,36 @@ function buildCityGrid(scene) {
   return buildOpenCityGrid(scene);
 }
 
+// Open ground in an Indian city or village: patches of green grass, dry yellow grass, sandy soil, red earth and some
+// paving, in irregular patches tens of metres across with finer variation inside them. `far` (0..1) mutes it a
+// little for the land beyond the mapped area.
+function openLandMaterial(far = 1) {
+  const m = new THREE.MeshStandardNodeMaterial({ roughness: 0.96, metalness: 0.0 });
+  const h2 = (p) => fract(sin(dot(p, vec2(12.9898, 78.233))).mul(43758.5453));
+  const vn = (p) => {
+    const i = floor(p), f = fract(p), u = f.mul(f).mul(f.mul(-2.0).add(3.0));
+    return mix(mix(h2(i), h2(i.add(vec2(1, 0))), u.x), mix(h2(i.add(vec2(0, 1))), h2(i.add(vec2(1, 1))), u.x), u.y);
+  };
+  // two octaves, so the patches have ragged edges instead of round blobs
+  const fbm = (p) => vn(p).mul(0.65).add(vn(p.mul(2.7).add(31.0)).mul(0.35));
+  const wp = positionWorld.xz;
+  const delhi = GEO.city === 'delhi';
+  const earth = color(delhi ? 0x8a7a62 : 0x7a5442);   // red laterite soil (dusty brown in the north)
+  const sand = color(delhi ? 0xb8a682 : 0xa48a68);    // sandy, trodden ground
+  const dry = color(0x8c8550);                        // dry, yellowed grass
+  const green = color(0x4f6a34);                      // green grass
+  const lush = color(0x3d5a2a);                       // thick grass and weeds after the rains
+  const paved = color(0x6f6c66);                      // concrete and paving
+  let c = mix(earth, sand, smoothstep(0.35, 0.7, fbm(wp.mul(0.03).add(5.0))));
+  c = mix(c, dry, smoothstep(0.45, 0.7, fbm(wp.mul(0.022).add(41.0))).mul(0.85));
+  c = mix(c, green, smoothstep(0.52, 0.72, fbm(wp.mul(0.026).add(87.0))).mul(0.9));
+  c = mix(c, lush, smoothstep(0.62, 0.8, fbm(wp.mul(0.05).add(13.0))).mul(0.7));
+  c = mix(c, paved, smoothstep(0.7, 0.85, fbm(wp.mul(0.07).add(63.0))).mul(0.6 * far));
+  // fine grain: tufts, stones, tyre marks
+  m.colorNode = c.mul(vn(wp.mul(0.9)).mul(0.18).add(vn(wp.mul(3.1)).mul(0.08)).add(0.82)).mul(mix(1.0, 0.9, 1.0 - far));
+  return m;
+}
+
 /**
  * The ground of a city built from OpenStreetMap (open-city-config.js): the harbour water, each land mass as a seawall
  * slab under an asphalt deck at y = 0 with its rivers and lakes cut out, every block's raised sidewalk & curbs with a lawn
@@ -281,7 +311,7 @@ function buildOpenCityGrid(scene) {
   waterGeo.rotateX(-Math.PI / 2);
   // An inland Indian city has no sea around it: the land runs on past the mapped area to the haze
   const INLAND = ['bengaluru', 'delhi'].includes(GEO.city);
-  const water = new THREE.Mesh(waterGeo, INLAND ? new THREE.MeshStandardNodeMaterial({ color: 0x5f554b, roughness: 0.97, metalness: 0 }) : waterMat);
+  const water = new THREE.Mesh(waterGeo, INLAND ? openLandMaterial(0.8) : waterMat);
   water.position.set(0, INLAND ? -0.05 : ISLAND_BOUNDS.waterLevel, 0);
   water.receiveShadow = true;
   group.add(water);
@@ -337,21 +367,7 @@ function buildOpenCityGrid(scene) {
 
   // Lawn over the sidewalk slab inside every block's property line (GEO.lawns, traced by tools/city/build.mjs: the
   // ground the buildings and the trees stand on)
-  // (an Indian city's plots are paved compounds and bare red earth, with only a little grass)
-  const lawnMat = ['bengaluru', 'delhi'].includes(GEO.city) ? (() => {
-    const m = new THREE.MeshStandardNodeMaterial({ roughness: 0.95, metalness: 0.0 });
-    const h2 = (p) => fract(sin(dot(p, vec2(12.9898, 78.233))).mul(43758.5453));
-    const vn = (p) => {
-      const i = floor(p), f = fract(p), u = f.mul(f).mul(f.mul(-2.0).add(3.0));
-      return mix(mix(h2(i), h2(i.add(vec2(1, 0))), u.x), mix(h2(i.add(vec2(0, 1))), h2(i.add(vec2(1, 1))), u.x), u.y);
-    };
-    const wp = positionWorld.xz;
-    const earth = GEO.city === 'delhi' ? color(0x8a7c66) : color(0x6e5546);
-    const paved = color(0x6f6c66), grass = color(0x4a5e34);
-    const c = mix(mix(paved, earth, smoothstep(0.3, 0.75, vn(wp.mul(0.11))).mul(0.85)), grass, smoothstep(0.66, 0.85, vn(wp.mul(0.17).add(17.0))).mul(0.6));
-    m.colorNode = c.mul(vn(wp.mul(0.9)).mul(0.2).add(0.85));
-    return m;
-  })() : createParkLawnMaterial(false);
+  const lawnMat = INLAND ? openLandMaterial() : createParkLawnMaterial(false);
   const lawnGeos = [];
   const L = GEO.lawns || [];
   for (let i = 0, fx = 0, fz = 0; i < L.length;) {
