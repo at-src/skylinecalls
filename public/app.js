@@ -474,50 +474,49 @@ async function refreshExpect() {
   } catch {}
 }
 
-// ======================= time of day =======================
-const PLAY = 'M8 5.5v13a1 1 0 001.5.86l11-6.5a1 1 0 000-1.72l-11-6.5A1 1 0 008 5.5z', PAUSE = 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z';
+// ======================= time and weather =======================
+// The map always shows the real time and weather at the home, like a maps app: nothing to drag or toggle.
+// ?hour=22 and ?rain fix them for screenshots only.
 const fmtHour = (h) => { const m = Math.floor((h % 1) * 60), hh = Math.floor(h) % 24; return `${hh % 12 || 12}:${String(m).padStart(2, '0')} ${hh < 12 ? 'am' : 'pm'}`; };
+// WMO weather codes (Open-Meteo) -> a word
+const sky = (code, clouds) => {
+  if (code == null) return '';
+  if (code >= 95) return 'Thunderstorm';
+  if (code >= 80) return 'Showers';
+  if (code >= 61) return 'Rain';
+  if (code >= 51) return 'Drizzle';
+  if (code >= 45) return 'Fog';
+  if (code >= 3) return 'Cloudy';
+  if (code >= 1 || clouds > 40) return 'Partly cloudy';
+  return 'Clear';
+};
 function bindClock() {
-  const slider = $('#tSlider'), label = $('#tLabel'), icon = $('#tIcon'), live = $('#tLive'), play = $('#tPlay');
-  let dragging = false;
-  const mode = (m) => {
-    live.classList.toggle('on', m === 'live'); live.setAttribute('aria-pressed', String(m === 'live'));
-    play.setAttribute('aria-pressed', String(m === 'play')); $('#tPlayIcon').setAttribute('d', m === 'play' ? PAUSE : PLAY);
-  };
-  // ?hour=7.5 opens the city at a fixed hour (used for screenshots)
-  const fixed = parseFloat(new URLSearchParams(location.search).get('hour'));
-  if (!Number.isNaN(fixed)) { city.setHour(fixed); mode('manual'); }
-  slider.addEventListener('pointerdown', () => (dragging = true));
-  window.addEventListener('pointerup', () => (dragging = false));
-  slider.oninput = () => { city.setHour(parseFloat(slider.value)); mode('manual'); };
-  live.onclick = () => { city.setLive(); mode('live'); rainLive = true; liveRain(); };
-  // Rain: in Live it follows the real weather at the home (/api/weather, checked every 10 minutes); the button turns
-  // it on or off by hand. ?rain opens the map in the rain.
-  const rainBtn = $('#tRain');
-  let rainLive = true, rainOn = false;
-  const showRain = (on) => { rainOn = on; rainBtn.setAttribute('aria-pressed', String(on)); city.setRain?.(on ? 1 : 0); };
-  async function liveRain() {
+  const label = $('#tLabel'), icon = $('#tIcon'), wx = $('#tWx');
+  const qs = new URLSearchParams(location.search);
+  const fixed = parseFloat(qs.get('hour'));
+  if (!Number.isNaN(fixed)) city.setHour(fixed);
+  const fixedRain = qs.has('rain');
+  if (fixedRain) city.setRain?.(1);
+  async function liveWeather() {
     if (!home) return;
     try {
       const w = await (await fetch(`/api/weather?lat=${home.lat}&lng=${home.lng}`)).json();
       city.setSun?.(w);
-      if (rainLive) { rainOn = w.rain > 0; rainBtn.setAttribute('aria-pressed', String(rainOn)); city.setRain?.(w.rain || 0); }
-    } catch { /* offline: keep it as it is */ }
+      if (!fixedRain) city.setRain?.(w.rain || 0);
+      const word = fixedRain ? 'Rain' : sky(w.code, w.clouds);
+      wx.textContent = [w.temp != null ? `${Math.round(w.temp)}°` : '', word].filter(Boolean).join(' ');
+      wx.hidden = !wx.textContent;
+    } catch { /* offline: keep what is shown */ }
   }
-  rainBtn.onclick = () => { rainLive = false; showRain(!rainOn); };
-  if (new URLSearchParams(location.search).has('rain')) { rainLive = false; showRain(true); }
-  setInterval(liveRain, 10 * 60 * 1000);
-  window.addEventListener('ttd-home', liveRain);
-  play.onclick = () => { if (city.tod.mode === 'play') { city.setHour(city.hour); mode('manual'); } else { city.playDay(60); mode('play'); } };
-  let last = '', lastMode = '';
+  setInterval(liveWeather, 10 * 60 * 1000);
+  window.addEventListener('ttd-home', liveWeather);
+  liveWeather();
+  let last = '';
   addFrameHook(() => {
     const h = city.hour, txt = fmtHour(h);
-    if (city.tod.mode !== lastMode) { lastMode = city.tod.mode; mode(lastMode); }
-    if (!dragging) slider.value = h.toFixed(2);
     if (txt !== last) { label.textContent = txt; last = txt; icon.classList.toggle('night', h < 6 || h >= 18.8); }
   });
 }
-
 // ======================= ui wiring =======================
 function bindUi() {
   const H = () => (city.home ? city.home.clone() : new THREE.Vector3());

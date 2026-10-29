@@ -27,7 +27,7 @@ b.on('targetcreated', () => {});
 await p.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
 await p.evaluate(() => localStorage.setItem('ttd-home', JSON.stringify({ lat: 12.91281, lng: 77.63741, label: "Sam's home" })) || localStorage.setItem('ttd-role', 'receiver'));
 for (const h of (process.argv[2] || '23,19,9').split(',')) {
-  await p.goto(`http://localhost:${PORT}/?hour=${h}${process.env.Q || ""}`, { waitUntil: 'domcontentloaded' });
+  await p.goto(`http://localhost:${PORT}/${h === "live" ? "?" : "?hour=" + h}${process.env.Q || ""}`, { waitUntil: 'domcontentloaded' });
   const t0 = Date.now();
   await p.waitForFunction(() => document.getElementById('veil')?.classList.contains('off'), { timeout: 120000 }).catch(() => console.log('veil still up'));
   console.log('map up after', Math.round((Date.now() - t0) / 1000), 's');

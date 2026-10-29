@@ -36,22 +36,14 @@
         </button>
       </div>
 
-      <!-- time of day: live clock, scrub to any hour, or play a whole day -->
+      <!-- the real time and weather at the home, read only -->
       <div class="hud time-row">
-        <div class="clock" role="group" aria-label="Time of day">
-          <button id="tPlay" class="tbtn" title="Play a whole day" aria-label="Play a whole day" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path id="tPlayIcon" d="M8 5.5v13a1 1 0 001.5.86l11-6.5a1 1 0 000-1.72l-11-6.5A1 1 0 008 5.5z"/></svg>
-          </button>
+        <div class="clock" role="status" aria-label="Time and weather at the home">
           <span class="tico" id="tIcon" aria-hidden="true"></span>
-          <input id="tSlider" type="range" min="0" max="24" step="0.05" value="18.5" aria-label="Hour of the day" />
-          <span class="tlabel" id="tLabel">6:30 pm</span>
-          <button id="tRain" class="tbtn" title="Rain (Live follows the real weather)" aria-label="Rain" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 15a5 5 0 01-.9-9.9A6 6 0 0117.7 7 4 4 0 0117 15H7zm1 2.5l-1 2.5m5-2.5l-1 2.5m5-2.5l-1 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>
-          </button>
-          <button id="tLive" class="tlive on" aria-pressed="true" title="Follow the real time">Live</button>
+          <span class="tlabel" id="tLabel"></span>
+          <span class="twx" id="tWx"></span>
         </div>
       </div>
-
       <div class="zoom" role="group" aria-label="Zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">&minus;</button></div>
 
       <!-- door path ribbon -->

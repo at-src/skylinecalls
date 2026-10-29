@@ -21,27 +21,32 @@ export function startBridge({ scene, camera, orbit, applyPreset, weather, footpr
     return hit ? hit.point.y : 0;
   };
 
-  // ---- home: the home's own building glows amber, with a ring pulsing on the ground round it
-  let ring = null, homeY = 12, homeMark = null;
+  // ---- home: a soft shaft of light and a pulsing ring
+  let beam = null, ring = null, homeY = 12;
   const ringOpacity = uniform(0.4), pulse = { expecting: false };
   function setHome(x, z) {
-    if (ring) fx.remove(ring);
-    if (homeMark) marks.remove(homeMark);
+    if (beam) fx.remove(beam, ring);
     homeY = topAt(x, z) || 12;
-    homeMark = marks.add(x, z, 'home', 'home', { persistent: true });
+    const bg = new THREE.CylinderGeometry(0.6, 1.8, 160, 24, 1, true);
+    bg.translate(0, 80, 0);
+    const bm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const fade = pow(float(1).sub(uv().y), 3.2);
+    bm.colorNode = vec3(1.6, 0.9, 0.3).mul(fade).mul(0.8);
+    bm.opacityNode = fade;
+    beam = new THREE.Mesh(bg, bm);
+    beam.position.set(x, homeY, z);
     const rm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
     rm.colorNode = vec3(2.4, 1.3, 0.35);
     rm.opacityNode = ringOpacity;
     ring = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 64).rotateX(-Math.PI / 2), rm);
-    ring.position.set(homeMark.x, 0.7, homeMark.z);
-    fx.add(ring);
+    ring.position.set(x, homeY + 0.6, z);
+    fx.add(beam, ring);
     post({ type: 'homeH', h: homeY });
   }
 
-  // ---- door path: drawn by the dashboard as numbered stop pins; the map draws no line of its own
+  // ---- door path: shown by the dashboard as numbered stop pins, no line drawn on the map
   function setPath() {}
   function setProgress() {}
-
   // ---- rider: a bright blue marker that hops to each new position, with a ripple under it
   let rider = null, halo = null, riderFrom = null, riderTo = null, riderT = 1;
   const haloOpacity = uniform(1);
@@ -316,7 +321,7 @@ function buildNightLights(fx) {
 // while teaching the way. The building on that spot gets a glowing shell and a ring pulses on the ground round it; a
 // spot with no building (a gate, a lane) gets the ring and a short light post. Older marks fade to a faint trace, so
 // the last few stay readable without cluttering the map.
-const MARK_COLOURS = { seen: [0.25, 0.75, 1.9], target: [1.9, 1.0, 0.22], taught: [0.3, 1.6, 0.7], home: [1.5, 0.8, 0.2] };
+const MARK_COLOURS = { seen: [0.25, 0.75, 1.9], target: [1.9, 1.0, 0.22], taught: [0.3, 1.6, 0.7] };
 function buildHighlights(fx, footprints) {
   // footprints by 50 m cell, for finding the building at a spot
   const CELL = 50, grid = new Map();
@@ -332,8 +337,8 @@ function buildHighlights(fx, footprints) {
   const inside = (x, z, p) => { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) { if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) c = !c; } return c; };
   const edgeDist = (x, z, p) => { let d = Infinity; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) { const ax = p[j], az = p[j + 1], bx = p[i], bz = p[i + 1]; const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)); d = Math.min(d, Math.hypot(x - ax - t * dx, z - az - t * dz)); } return d; };
   // the building at (x, z): the one it stands in, else the nearest within 18 m (shops are mapped a few metres off)
-  const buildingAt = (x, z, near = 18) => {
-    let best = null, bestD = near;
+  const buildingAt = (x, z) => {
+    let best = null, bestD = 18;
     for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (const k of grid.get(key(Math.floor(x / CELL) + di, Math.floor(z / CELL) + dj)) || []) {
       const f = footprints[k];
       if (inside(x, z, f.pts)) return f;
@@ -372,18 +377,24 @@ function buildHighlights(fx, footprints) {
     mesh.renderOrder = 8;
     return { mesh, cx, cz, r: Math.max(6, Math.hypot(f.bb[1] - f.bb[0], f.bb[3] - f.bb[2]) / 2), h: f.h };
   }
-  function add(x, z, kind = 'seen', idTag = '', { persistent = false } = {}) {
+  function add(x, z, kind = 'seen', idTag = '') {
     const c = MARK_COLOURS[kind] || MARK_COLOURS.seen;
     // the newest of each kind is the bright one; the ones before fade to a trace
     for (const l of live) if (l.kind === kind) l.fadeTo = 0.18;
     const strength = uniform(0), ringA = uniform(0);
-    // the home glows only if it really stands inside a mapped building, never a neighbour's
-    const f = buildingAt(x, z, persistent ? 0 : 18);
-    const item = { kind, idTag, strength, ringA, t: 0, fadeTo: 1, level: 0, parts: [], persistent };
+    const f = buildingAt(x, z);
+    const item = { kind, idTag, strength, ringA, t: 0, fadeTo: 1, level: 0, parts: [] };
     let cx = x, cz = z, r = 7, h = 0;
     if (f) {
       const s = shell(f, c, strength);
       item.parts.push(s.mesh); cx = s.cx; cz = s.cz; r = s.r; h = s.h;
+    } else {
+      // no building: a short post of light
+      const pg = new THREE.CylinderGeometry(0.25, 0.9, 16, 12, 1, true); pg.translate(0, 8, 0);
+      const pm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+      pm.colorNode = vec3(...c).mul(pow(float(1).sub(uv().y), 2.5)).mul(strength);
+      pm.opacityNode = float(1);
+      const post = new THREE.Mesh(pg, pm); post.position.set(x, 0, z); item.parts.push(post);
     }
     const rm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
     rm.colorNode = vec3(...c).mul(ringA);
@@ -396,26 +407,23 @@ function buildHighlights(fx, footprints) {
     for (const p of item.parts) { p.frustumCulled = false; p.matrixAutoUpdate = true; group.add(p); }
     live.push(item);
     // keep the last eight
-    const temp = live.filter((l) => !l.persistent);
-    while (temp.length > 8) { const old = temp.shift(); remove(old); }
-    item.x = cx; item.z = cz;
-    return persistent ? item : { x: cx, z: cz, h };
+    while (live.length > 8) { const old = live.shift(); for (const p of old.parts) group.remove(p); }
+    return { x: cx, z: cz, h };
   }
-  function remove(item) { for (const p of item.parts) group.remove(p); const i = live.indexOf(item); if (i >= 0) live.splice(i, 1); }
-  function clear() { for (const l of [...live]) if (!l.persistent) remove(l); }
+  function clear() { for (const l of live) for (const p of l.parts) group.remove(p); live.length = 0; }
   return {
-    add, clear, remove,
+    add, clear,
     update(dt, t) {
       for (const l of live) {
         l.t += dt;
         // ease towards its level: in quickly when new, slowly down to a trace when superseded
         l.level += (l.fadeTo - l.level) * Math.min(1, dt * (l.fadeTo > l.level ? 4 : 1.2));
-        const beat = l.persistent ? 0.55 : l.fadeTo === 1 ? 0.75 + 0.25 * Math.sin(t * 3.2) : 1;
+        const beat = l.fadeTo === 1 ? 0.75 + 0.25 * Math.sin(t * 3.2) : 1;
         l.strength.value = l.level * beat;
         const ph = (t * 0.7 + l.x * 0.01) % 1;
         l.ring.scale.setScalar(l.r * (1.05 + ph * 1.6));
         l.ring.updateMatrix(); l.ring.updateMatrixWorld();
-        l.ringA.value = l.persistent ? 0 : (1 - ph) * l.level * 0.9;
+        l.ringA.value = (1 - ph) * l.level * 0.9;
       }
       group.updateMatrixWorld(true);
     }
