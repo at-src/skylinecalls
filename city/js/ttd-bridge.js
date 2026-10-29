@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { uniform, uv, vec3, float, fract, pow, step, time, max, abs, exp, smoothstep, attribute } from 'three/tsl';
+import { uniform, uv, vec3, float, fract, pow, max, abs, exp, smoothstep, attribute } from 'three/tsl';
 import { GEO } from './geodata.js';
 const F = GEO.frame;
 
@@ -38,29 +38,9 @@ export function startBridge({ scene, camera, orbit, applyPreset, weather, footpr
     post({ type: 'homeH', h: homeY });
   }
 
-  // ---- door path: a glowing tube with light flowing along it, filling in as the rider passes each stop
-  let path = null;
-  const prog = uniform(0);
-  let progFrom = 0, progTo = 0, progT = 1, stopParams = [];
-  function setPath(pts) {
-    if (path) fx.remove(path);
-    if (pts.length < 2) return;
-    const curve = new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 3.2, z)), false, 'centripetal', 0.2);
-    const g = new THREE.TubeGeometry(curve, Math.max(60, pts.length * 40), 1.6, 10, false);
-    const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending });
-    const flow = pow(fract(uv().x.mul(14).sub(time.mul(0.9))), 6);
-    m.colorNode = vec3(1.5, 0.8, 0.22).mul(flow.mul(1.2).add(0.45)).add(vec3(1.8, 1.1, 0.4).mul(step(uv().x, prog)).mul(1.1));
-    m.opacityNode = float(0.8);
-    path = new THREE.Mesh(g, m);
-    path.renderOrder = 10;
-    fx.add(path);
-    stopParams = pts.map((_, i) => i / (pts.length - 1));
-  }
-  function setProgress(step) {
-    progFrom = prog.value;
-    progTo = step < 0 ? 0 : stopParams[Math.min(step, stopParams.length - 1)] ?? 0;
-    progT = 0;
-  }
+  // ---- door path: drawn by the dashboard as numbered stop pins; the map draws no line of its own
+  function setPath() {}
+  function setProgress() {}
 
   // ---- rider: a bright blue marker that hops to each new position, with a ripple under it
   let rider = null, halo = null, riderFrom = null, riderTo = null, riderT = 1;
@@ -127,7 +107,6 @@ export function startBridge({ scene, camera, orbit, applyPreset, weather, footpr
         ring.scale.setScalar(6 + ph * (pulse.expecting ? 42 : 24));
         ringOpacity.value = (1 - ph) * (pulse.expecting ? 0.55 : 0.35);
       }
-      if (progT < 1) { progT = Math.min(1, progT + dt / 1.6); prog.value = progFrom + (progTo - progFrom) * ease(progT); }
       if (rider) {
         if (riderT < 1) {
           riderT = Math.min(1, riderT + dt / 1.8);
@@ -353,8 +332,8 @@ function buildHighlights(fx, footprints) {
   const inside = (x, z, p) => { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) { if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) c = !c; } return c; };
   const edgeDist = (x, z, p) => { let d = Infinity; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) { const ax = p[j], az = p[j + 1], bx = p[i], bz = p[i + 1]; const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)); d = Math.min(d, Math.hypot(x - ax - t * dx, z - az - t * dz)); } return d; };
   // the building at (x, z): the one it stands in, else the nearest within 18 m (shops are mapped a few metres off)
-  const buildingAt = (x, z) => {
-    let best = null, bestD = 18;
+  const buildingAt = (x, z, near = 18) => {
+    let best = null, bestD = near;
     for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (const k of grid.get(key(Math.floor(x / CELL) + di, Math.floor(z / CELL) + dj)) || []) {
       const f = footprints[k];
       if (inside(x, z, f.pts)) return f;
@@ -398,7 +377,8 @@ function buildHighlights(fx, footprints) {
     // the newest of each kind is the bright one; the ones before fade to a trace
     for (const l of live) if (l.kind === kind) l.fadeTo = 0.18;
     const strength = uniform(0), ringA = uniform(0);
-    const f = buildingAt(x, z);
+    // the home glows only if it really stands inside a mapped building, never a neighbour's
+    const f = buildingAt(x, z, persistent ? 0 : 18);
     const item = { kind, idTag, strength, ringA, t: 0, fadeTo: 1, level: 0, parts: [], persistent };
     let cx = x, cz = z, r = 7, h = 0;
     if (f) {

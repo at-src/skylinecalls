@@ -25,7 +25,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // frame errors (the 3D map in its iframe)
 b.on('targetcreated', () => {});
 await p.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
-await p.evaluate(() => localStorage.setItem('ttd-home', JSON.stringify({ lat: 12.91281, lng: 77.63741, label: "Sam's home" })));
+await p.evaluate(() => localStorage.setItem('ttd-home', JSON.stringify({ lat: 12.91281, lng: 77.63741, label: "Sam's home" })) || localStorage.setItem('ttd-role', 'receiver'));
 for (const h of (process.argv[2] || '23,19,9').split(',')) {
   await p.goto(`http://localhost:${PORT}/?hour=${h}${process.env.Q || ""}`, { waitUntil: 'domcontentloaded' });
   const t0 = Date.now();
