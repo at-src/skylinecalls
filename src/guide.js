@@ -68,12 +68,13 @@ export async function next(v, seen = '') {
   emit('tool.next', { visit: v.id, seen, match: match && `${match.kind}:${match.n}`, zone, distance_m: toAnchor && Math.round(toAnchor) });
 
   // 1) He named something on our path: that fixes where he is, whatever the GPS says.
+  if (match) seenOnMap(v, door, match, seen);
   if (match?.kind === 'at') { placed(v, stepPoint(door, match.n), match.n, match.label); return pathFrom(v, door, match.n, `He is at "${match.label}".`); }
   if (match?.kind === 'during') { const a = stepPoint(door, match.n - 1), b = stepPoint(door, match.n); placed(v, { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 }, match.n - 1, match.label); return pathFrom(v, door, match.n - 1, `He is passing "${match.label}", still on the way.`, true); }
 
   // 2) He named one of the big landmarks around the area: send him on from there, like a person would.
   const hub = matchHub(door, seen);
-  if (hub) placed(v, hub, -1, hub.name);
+  if (hub) { placed(v, hub, -1, hub.name); highlight(v, 'seen', hub, hub.name, seen); }
   if (hub) return reply(v, 'far', `He is at ${hub.name}. Tell him, one part at a time: ${hub.to_anchor} Ask him to tell you when he reaches ${door.anchor.name}.`);
 
   // 3) He named something not on the path: find it on the map and steer him from there.
@@ -85,6 +86,7 @@ export async function next(v, seen = '') {
     try { place = (await findPlace(seen, near, 2000)).find((p) => p.distance_m < maxFromRider); } catch {}
     if (place) {
       placed(v, place, -1, place.name);
+      highlight(v, 'seen', place, place.name, seen);
       const d = distance(place, anchor);
       if (d <= 60) return pathFrom(v, door, 0, `He is at ${place.name}, right at ${door.anchor.name}.`);
       if (d <= FAR_M) {
@@ -123,6 +125,7 @@ function pathFrom(v, door, at, lead, continuing = false) {
   const st = door.steps.find((s) => s.n === at + 1);
   if (continuing && st) {
     updateVisit(v.id, { step: at, zone: 'near' });
+    targetOnMap(v, st);
     return reply(v, 'near', `${lead} Tell him he is on the right way and to keep going: ${st.instruction} Then ask: "${st.check}"`);
   }
   if (at === 0) milestone(v, 'anchor', `📍 Your ${cap(v.service)} rider has reached ${door.anchor.name}.`);
@@ -132,11 +135,32 @@ function pathFrom(v, door, at, lead, continuing = false) {
     return reply(v, 'door', `${lead} He is at the door. Tell him: ${door.door.action}. If nobody opens: ${door.fallback.if_no_answer}`);
   }
   updateVisit(v.id, { step: at, zone: 'near' });
+  targetOnMap(v, st);
   if (st.n === door.steps.length) milestone(v, 'door', `🚪 Your ${cap(v.service)} rider is at your building, coming up now.`);
   const last = st.n === door.steps.length;
   return reply(v, 'near', `${lead} Next step (${st.n} of ${door.steps.length}): ${st.instruction}${last ? '' : ` Then ask: "${st.check}"`}`);
 }
 
+// What the conversation points at, for the live map: 'seen' is what the rider says he can see (lit up where it is), 'target'
+// is where the agent is sending him next. A step's landmark uses its own mapped spot (map_matches) when the door has one.
+function spotFor(st, label) {
+  const want = String(label || '').toLowerCase();
+  const m = (st?.map_matches || []).find((x) => want && (x.name.toLowerCase().includes(want) || want.includes(x.name.toLowerCase())));
+  return m ? { lat: m.lat, lng: m.lng, name: m.name } : st ? { lat: st.lat, lng: st.lng, name: label } : null;
+}
+function highlight(v, kind, p, label, said = '') {
+  if (!p) return;
+  emit('map.highlight', { visit: v.id, kind, lat: p.lat, lng: p.lng, label, said });
+}
+function seenOnMap(v, door, match, said) {
+  if (match.n === 0) return highlight(v, 'seen', door.anchor, door.anchor.name, said);
+  const st = door.steps.find((s) => s.n === match.n);
+  highlight(v, 'seen', spotFor(st, match.label), match.label, said);
+}
+function targetOnMap(v, st) {
+  const label = (st.see && st.see[0]) || st.instruction.split('.')[0];
+  highlight(v, 'target', spotFor(st, label), label);
+}
 // where the agent now believes the rider is (drives the live map)
 const stepPoint = (door, n) => (n === 0 ? { lat: door.anchor.lat, lng: door.anchor.lng } : { lat: door.steps[n - 1].lat, lng: door.steps[n - 1].lng });
 function placed(v, p, step, label) {
