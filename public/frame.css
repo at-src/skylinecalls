@@ -286,8 +286,8 @@ body::before { content: none; }
 /* closed sleeping eye: a downward curved lash, clearly visible on the grey */
 /* closed sleeping eye: a bold dark curved stroke (a wide ∪), clearly visible on the grey face */
 .rabbit .head { overflow: visible; }
-.rabbit .eye { left: 2px; top: 16px; width: 15px; height: 9px; background: transparent; border: 0; border-bottom: 3px solid #2b3545; border-radius: 0 0 16px 16px; box-shadow: none; z-index: 3; }
-.rabbit .nose { left: -5px; top: 26px; width: 8px; height: 6px; background: #e8879f; z-index: 3; }
+.rabbit .eye { left: 20px; top: 6px; width: 16px; height: 10px; background: transparent; border: 0; border-bottom: 3px solid #2b3545; border-radius: 0 0 16px 16px; box-shadow: none; z-index: 3; }
+.rabbit .nose { left: -4px; top: 24px; width: 8px; height: 6px; background: #e8879f; z-index: 3; }
 .rabbit .whisk { left: -12px; top: 29px; background: rgba(60,74,92,0.3); box-shadow: 0 4px rgba(60,74,92,0.22), 0 -4px rgba(60,74,92,0.22); }
 .rabbit .zzz span { color: var(--am); }
 /* ============ light-theme component overrides (white panels, ice bg) ============ */
