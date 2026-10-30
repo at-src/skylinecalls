@@ -278,3 +278,14 @@ body::before { content: none; }
 .tg-feed .none { align-self: center; background: rgba(255,255,255,0.7); color: #4a6b4a; font-size: 12px; border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
 /* the empty chat gets a subtle hint centered on the wallpaper */
 .tg-full .tg-feed:empty::after { content: "Your chat with Varun appears here."; margin: auto; color: rgba(40,70,40,0.5); font-size: 13px; background: rgba(255,255,255,0.65); padding: 7px 14px; border-radius: 12px; }
+/* ============ sleeping rabbit — soft grey with a clear closed eye ============ */
+.rabbit .body { background: linear-gradient(160deg, #c3ccd9, #9fabbd); box-shadow: inset 0 3px 8px rgba(255,255,255,0.3); }
+.rabbit .head { background: linear-gradient(160deg, #ccd4e0, #a9b5c7); }
+.rabbit .ear { background: linear-gradient(180deg, #ccd4e0, #a9b5c7); }
+.rabbit .ear::after { background: #e8a7bd; opacity: 0.7; }
+.rabbit .paw { background: #b6c0ce; }
+/* closed sleeping eye: a downward curved lash, clearly visible on the grey */
+.rabbit .eye { left: 16px; top: 18px; width: 12px; height: 7px; background: transparent; border: 0; border-bottom: 2.5px solid #3f4a5c; border-radius: 0 0 12px 12px; box-shadow: none; }
+.rabbit .nose { left: 3px; top: 27px; background: #e8879f; }
+.rabbit .whisk { left: -12px; top: 29px; background: rgba(60,74,92,0.3); box-shadow: 0 4px rgba(60,74,92,0.22), 0 -4px rgba(60,74,92,0.22); }
+.rabbit .zzz span { color: var(--am); }
