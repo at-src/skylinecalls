@@ -20,7 +20,7 @@ export function handleText(text) {
   const t = String(text || '').trim();
   const low = t.toLowerCase();
   if (/^\/start|^hi$|^hello$|^help/.test(low)) {
-    return 'Hi! Tell me when someone is coming, e.g. "I have an order with Zepto" or "booked an Uber". I\'ll guide only them to your door. Send "status" to see who\'s expected.';
+    return "Hi, I'm Varun — I answer your calls for you. Tell me things like \"remind me to call the plumber at 5\", \"save this number as my cousin\", or set me to available / screened / unavailable. I'll message you here after every call.";
   }
   // reminders: "remind me to call Rahul at 6pm"
   const rem = ownerMessage(t);

@@ -4,22 +4,25 @@
    pins, tg-feed, guard) still come from style.css.
    ============================================================================ */
 :root {
-  /* lighter blue, solid cards, thin borders */
-  --teal-0: #1e3a60; --teal-1: #27496f; --teal-2: #1a3455;
-  --glass: #223f63; --glass-2: #2b4a72;
-  --glass-line: rgba(180, 210, 255, 0.16); --glass-line2: rgba(180, 210, 255, 0.28);
-  --ink: #f2f6ff; --ink-dim: #bcccea; --ink-faint: #8498bd;
+  /* clear blue: solid opaque cards, crisp borders, no fog */
+  --teal-0: #16233b; --teal-1: #1b2d4a; --teal-2: #121d31;
+  --glass: #18293f;        /* side/left/right columns */
+  --glass-mid: #1d3047;    /* middle column, a touch lighter so it stands out */
+  --glass-2: #243a55;      /* inner blocks, cards */
+  --glass-3: #2c4566;      /* hover / raised */
+  --glass-line: rgba(255, 255, 255, 0.09); --glass-line2: rgba(255, 255, 255, 0.16);
+  --ink: #f4f7fc; --ink-dim: #a9b8d4; --ink-faint: #74849f;
   --am: #ffc24d; --am-ink: #2a1c05; --grn: #5fd79a; --red: #ff7a70; --blu: #74aef0; --vio: #9d7bff;
   --rad: 16px;
 }
 html, body { height: 100%; }
-body { overflow: hidden; background: #22406a; color: var(--ink);
+body { overflow: hidden; background: #0f1930; color: var(--ink);
   font-family: "Geist", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 body::before { content: none; }
 
-/* lighter blue base with a soft glow top-right */
+/* solid blue base, one faint glow top-right (no wash over the panels) */
 .shell { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; padding: 14px; gap: 12px;
-  background: radial-gradient(1000px 560px at 86% -10%, rgba(116,174,240,0.18), transparent 58%), linear-gradient(145deg, #2d5287 0%, #244672 48%, #1d3a5f 100%); }
+  background: radial-gradient(900px 480px at 88% -12%, rgba(116,160,230,0.14), transparent 60%), #0f1930; }
 
 /* ---- top bar ---- */
 .bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; flex: none; }
@@ -57,7 +60,10 @@ body::before { content: none; }
 /* columns = glass cards */
 .col { min-width: 0; border-radius: var(--rad); position: relative;
   background: var(--glass); border: 1px solid var(--glass-line);
-  display: flex; flex-direction: column; overflow: hidden; }
+  box-shadow: 0 8px 30px rgba(0,0,0,0.28); display: flex; flex-direction: column; overflow: hidden; }
+/* middle column stands out with a lighter shade + accent top edge */
+.col-mid { background: var(--glass-mid); box-shadow: 0 10px 34px rgba(0,0,0,0.34); }
+.col-mid::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--am), transparent); opacity: .5; }
 .col[hidden] { display: none; }
 .col-head { padding: 18px 20px 12px; flex: none; }
 .col-head h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
@@ -73,7 +79,7 @@ body::before { content: none; }
 .act-blk h3, .try-inline h3 { font-size: 13px; margin-bottom: 10px; color: var(--ink); }
 .act-blk { border-top: 1px solid var(--glass-line); padding-top: 14px; }
 /* ---- left: connectors ---- */
-.tg-card { margin: 0 16px 14px; border-radius: 14px; background: rgba(42,163,224,0.08); border: 1px solid rgba(88,182,255,0.22); display: flex; flex-direction: column; min-height: 0; max-height: 46%; overflow: hidden; }
+.tg-card { margin: 0 16px 14px; border-radius: 14px; background: #17212b; border: 1px solid var(--glass-line); display: flex; flex-direction: column; min-height: 0; max-height: 46%; overflow: hidden; }
 .tg-card-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid rgba(88,182,255,0.15); }
 .tg-card-head b { font-size: 14px; } .tg-card-head small { display: block; color: var(--ink-dim); font-size: 11.5px; }
 .tg-card-head .dot-on { margin-left: auto; width: 9px; height: 9px; border-radius: 99px; background: var(--grn); box-shadow: 0 0 10px rgba(67,220,140,0.6); }
@@ -97,8 +103,8 @@ body::before { content: none; }
 .mid-scroll .mode-note { margin: 0; }
 .mid-scroll .try-inline { padding: 0; }
 .activity { padding: 0; }
-.counts .ct { text-align: center; padding: 10px 6px; border-radius: 12px; background: var(--glass-2); border: 1px solid var(--glass-line); }
-.counts .ct b { display: block; font-size: 22px; font-weight: 700; } .counts .ct span { font-size: 10.5px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .03em; }
+.counts .ct { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 12px 6px; border-radius: 12px; background: var(--glass-2); border: 1px solid var(--glass-line); }
+.counts .ct b { font-size: 24px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; } .counts .ct span { font-size: 10px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .04em; line-height: 1; }
 .counts .ct.ok b { color: var(--grn); } .counts .ct.stop b { color: var(--red); } .counts .ct.live b { color: var(--am); }
 .activity { list-style: none; overflow-y: auto; padding: 0 20px 20px; display: flex; flex-direction: column; gap: 2px; min-height: 0; }
 .activity li { display: grid; grid-template-columns: 24px 58px 1fr; grid-template-rows: auto auto; gap: 0 10px; padding: 11px 0; border-bottom: 1px solid var(--glass-line); align-items: center; }
@@ -238,3 +244,26 @@ body::before { content: none; }
 /* quiet talk-to-varun row */
 .talk-row { display: flex; align-items: center; gap: 12px; }
 .talk-row .hint { margin: 0; }
+/* ============ Telegram-style chat feed ============ */
+.tg-full .tg-feed, .tg-card .tg-feed {
+  background: linear-gradient(180deg, #17212b, #0e1621);
+  display: flex; flex-direction: column; gap: 6px; padding: 16px 14px; }
+/* each message: a bubble that hugs its content, bot left, you right */
+.tg-feed li { display: inline-flex; align-items: flex-end; gap: 8px; max-width: 82%; width: fit-content;
+  padding: 7px 10px 6px; border-radius: 14px; border: 0; font-size: 13.5px; line-height: 18px;
+  background: #182533; color: #eaf2fb; align-self: flex-start; border-bottom-left-radius: 5px;
+  box-shadow: 0 1px 1px rgba(0,0,0,0.25); animation: up 350ms var(--ease) both; }
+.tg-feed li.me { align-self: flex-end; background: #2b5278; color: #fff; border-bottom-left-radius: 14px; border-bottom-right-radius: 5px; }
+.tg-feed li time { color: rgba(255,255,255,0.5); font-family: inherit; font-size: 10.5px; margin-left: 2px; align-self: flex-end; flex: none; }
+.tg-feed li.me time { color: rgba(255,255,255,0.6); }
+.tg-feed .tgb { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tg-feed .tgb > span { white-space: pre-line; word-break: break-word; }
+/* inline action buttons (Received / Not received) */
+.tgk { display: flex; gap: 6px; margin-top: 2px; }
+.tgbtn { padding: 5px 10px; border-radius: 8px; font-size: 12px; color: #a9d4ff; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); }
+.tgbtn:hover:not(:disabled) { background: rgba(255,255,255,0.14); }
+.tgbtn:disabled { opacity: 0.45; } .tgbtn.picked:disabled { opacity: 1; color: var(--grn); }
+.tg-feed .none { align-self: center; background: rgba(255,255,255,0.06); color: var(--ink-faint); font-size: 12px; border-radius: 10px; }
+.tg-card-head { background: #17212b; }
+/* the empty chat gets a subtle hint centered */
+.tg-full .tg-feed:empty::after { content: "Your chat with Varun appears here."; margin: auto; color: var(--ink-faint); font-size: 13px; }
