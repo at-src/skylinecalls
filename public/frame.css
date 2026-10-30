@@ -61,9 +61,8 @@ body::before { content: none; }
 .col { min-width: 0; border-radius: var(--rad); position: relative;
   background: var(--glass); border: 1px solid var(--glass-line);
   box-shadow: 0 8px 30px rgba(0,0,0,0.28); display: flex; flex-direction: column; overflow: hidden; }
-/* middle column stands out with a lighter shade + accent top edge */
+/* middle column stands out with a slightly lighter solid shade */
 .col-mid { background: var(--glass-mid); box-shadow: 0 10px 34px rgba(0,0,0,0.34); }
-.col-mid::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--am), transparent); opacity: .5; }
 .col[hidden] { display: none; }
 .col-head { padding: 18px 20px 12px; flex: none; }
 .col-head h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
@@ -244,26 +243,28 @@ body::before { content: none; }
 /* quiet talk-to-varun row */
 .talk-row { display: flex; align-items: center; gap: 12px; }
 .talk-row .hint { margin: 0; }
-/* ============ Telegram-style chat feed ============ */
+/* ============ Telegram chat feed — the classic green wallpaper theme ============ */
 .tg-full .tg-feed, .tg-card .tg-feed {
-  background: linear-gradient(180deg, #17212b, #0e1621);
-  display: flex; flex-direction: column; gap: 6px; padding: 16px 14px; }
-/* each message: a bubble that hugs its content, bot left, you right */
-.tg-feed li { display: inline-flex; align-items: flex-end; gap: 8px; max-width: 82%; width: fit-content;
-  padding: 7px 10px 6px; border-radius: 14px; border: 0; font-size: 13.5px; line-height: 18px;
-  background: #182533; color: #eaf2fb; align-self: flex-start; border-bottom-left-radius: 5px;
-  box-shadow: 0 1px 1px rgba(0,0,0,0.25); animation: up 350ms var(--ease) both; }
-.tg-feed li.me { align-self: flex-end; background: #2b5278; color: #fff; border-bottom-left-radius: 14px; border-bottom-right-radius: 5px; }
-.tg-feed li time { color: rgba(255,255,255,0.5); font-family: inherit; font-size: 10.5px; margin-left: 2px; align-self: flex-end; flex: none; }
-.tg-feed li.me time { color: rgba(255,255,255,0.6); }
+  background: #d2e4d2;
+  background-image: radial-gradient(circle at 20% 30%, rgba(255,255,255,0.35) 0 2px, transparent 3px),
+    radial-gradient(circle at 70% 60%, rgba(120,170,120,0.12) 0 3px, transparent 4px),
+    linear-gradient(160deg, #cfe3c9, #bcd8bd);
+  display: flex; flex-direction: column; gap: 5px; padding: 16px 14px; }
+/* each message: a bubble that hugs its content, incoming (Varun) left white, outgoing (you) right green */
+.tg-feed li { display: inline-flex; align-items: flex-end; gap: 7px; max-width: 84%; width: fit-content;
+  padding: 6px 9px 5px; border-radius: 12px; border: 0; font-size: 13.5px; line-height: 18px;
+  background: #ffffff; color: #1c2b1c; align-self: flex-start; border-bottom-left-radius: 4px;
+  box-shadow: 0 1px 1.5px rgba(0,0,0,0.14); animation: up 300ms var(--ease) both; }
+.tg-feed li.me { align-self: flex-end; background: #e3fcc9; color: #1c2b1c; border-bottom-left-radius: 12px; border-bottom-right-radius: 4px; }
+.tg-feed li time { color: rgba(40,70,40,0.45); font-family: inherit; font-size: 10.5px; margin-left: 2px; align-self: flex-end; flex: none; }
+.tg-feed li.me time { color: #5aa469; }
 .tg-feed .tgb { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .tg-feed .tgb > span { white-space: pre-line; word-break: break-word; }
 /* inline action buttons (Received / Not received) */
 .tgk { display: flex; gap: 6px; margin-top: 2px; }
-.tgbtn { padding: 5px 10px; border-radius: 8px; font-size: 12px; color: #a9d4ff; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); }
-.tgbtn:hover:not(:disabled) { background: rgba(255,255,255,0.14); }
-.tgbtn:disabled { opacity: 0.45; } .tgbtn.picked:disabled { opacity: 1; color: var(--grn); }
-.tg-feed .none { align-self: center; background: rgba(255,255,255,0.06); color: var(--ink-faint); font-size: 12px; border-radius: 10px; }
-.tg-card-head { background: #17212b; }
-/* the empty chat gets a subtle hint centered */
-.tg-full .tg-feed:empty::after { content: "Your chat with Varun appears here."; margin: auto; color: var(--ink-faint); font-size: 13px; }
+.tgbtn { padding: 5px 10px; border-radius: 8px; font-size: 12px; color: #2b7a3f; background: rgba(90,164,105,0.14); border: 1px solid rgba(90,164,105,0.3); }
+.tgbtn:hover:not(:disabled) { background: rgba(90,164,105,0.24); }
+.tgbtn:disabled { opacity: 0.5; } .tgbtn.picked:disabled { opacity: 1; font-weight: 600; }
+.tg-feed .none { align-self: center; background: rgba(255,255,255,0.7); color: #4a6b4a; font-size: 12px; border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+/* the empty chat gets a subtle hint centered on the wallpaper */
+.tg-full .tg-feed:empty::after { content: "Your chat with Varun appears here."; margin: auto; color: rgba(40,70,40,0.5); font-size: 13px; background: rgba(255,255,255,0.65); padding: 7px 14px; border-radius: 12px; }
