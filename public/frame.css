@@ -79,9 +79,10 @@ body::before { content: none; }
 .act-blk { border-top: 1px solid var(--glass-line); padding-top: 14px; }
 /* ---- left: connectors ---- */
 .tg-card { margin: 0 16px 14px; border-radius: 14px; background: #17212b; border: 1px solid var(--glass-line); display: flex; flex-direction: column; min-height: 0; max-height: 46%; overflow: hidden; }
-.tg-card-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid rgba(88,182,255,0.15); }
-.tg-card-head b { font-size: 14px; } .tg-card-head small { display: block; color: var(--ink-dim); font-size: 11.5px; }
-.tg-card-head .dot-on { margin-left: auto; width: 9px; height: 9px; border-radius: 99px; background: var(--grn); box-shadow: 0 0 10px rgba(67,220,140,0.6); }
+/* Telegram header: white bar like the real app */
+.tg-card-head { display: flex; align-items: center; gap: 10px; padding: 11px 14px; background: #ffffff; border-bottom: 1px solid #e4e7ea; }
+.tg-card-head b { font-size: 14px; color: #1c1c1e; } .tg-card-head small { display: block; color: #8a8f98; font-size: 11.5px; }
+.tg-card-head .dot-on { margin-left: auto; width: 9px; height: 9px; border-radius: 99px; background: #4fae6c; box-shadow: 0 0 8px rgba(79,174,108,0.5); }
 .tg-ic { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(160deg,#37b0ed,#2684c2); position: relative; flex: none; }
 .tg-ic::after { content: ""; position: absolute; left: 8px; top: 11px; width: 13px; height: 9px; background: #fff; clip-path: polygon(0 48%, 100% 0, 68% 100%, 42% 70%); }
 .tg-card .tg-feed { padding: 12px 14px; gap: 8px; }
@@ -226,11 +227,13 @@ body::before { content: none; }
 
 @media (max-width: 1100px) { .grid { grid-template-columns: 56px 1fr 1fr; } .col-right { display: none; } }
 /* Telegram compose box */
-.tg-compose { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--glass-line); flex: none; }
-.tg-compose input { flex: 1; min-width: 0; font: inherit; font-size: 13px; color: var(--ink); background: var(--glass-2); border: 1px solid var(--glass-line); border-radius: 10px; padding: 10px 12px; }
-.tg-compose input:focus { outline: none; border-color: var(--am); }
-.tg-send { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: #2684c2; color: #fff; flex: none; transition: filter .2s var(--ease); }
-.tg-send svg { width: 18px; height: 18px; fill: #fff; } .tg-send:hover { filter: brightness(1.1); }
+/* Telegram compose: light bar with a white rounded input, like the real app */
+.tg-compose { display: flex; gap: 8px; align-items: center; padding: 10px 12px; background: #ffffff; border-top: 1px solid #e4e7ea; flex: none; }
+.tg-compose input { flex: 1; min-width: 0; font: inherit; font-size: 14px; color: #1c1c1e; background: #f1f3f5; border: 1px solid transparent; border-radius: 20px; padding: 10px 16px; }
+.tg-compose input::placeholder { color: #9aa0a8; }
+.tg-compose input:focus { outline: none; background: #fff; border-color: #cfd4da; }
+.tg-send { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: #4fae6c; color: #fff; flex: none; transition: filter .2s var(--ease); }
+.tg-send svg { width: 18px; height: 18px; fill: #fff; } .tg-send:hover { filter: brightness(1.06); }
 
 /* to-do / tasks */
 .tasks-blk { border-top: 0; padding-top: 0; }
@@ -252,9 +255,9 @@ body::before { content: none; }
     radial-gradient(ellipse at bottom right, #8fbf86, transparent 60%),
     linear-gradient(150deg, #b7d6a3 0%, #9ec792 50%, #87b97f 100%);
   display: flex; flex-direction: column; gap: 4px; padding: 16px 14px 14px; overflow-y: auto; }
-/* Telegram's doodle wallpaper, tiled, faint, over the green */
-.tg-full .tg-feed::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.09; mix-blend-mode: multiply; background-repeat: repeat; background-size: 360px auto;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23123' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 20c6-6 14-6 20 0M24 14v12'/%3E%3Ccircle cx='90' cy='26' r='8'/%3E%3Cpath d='M86 26h8M90 22v8'/%3E%3Cpath d='M20 70l8 6 10-14'/%3E%3Crect x='78' y='62' width='20' height='16' rx='3'/%3E%3Cpath d='M78 66l10 6 10-6'/%3E%3Cpath d='M52 44c0-5 4-9 9-9s9 4 9 9c0 6-9 12-9 12s-9-6-9-12z'/%3E%3Cpath d='M30 100h18M39 95v10'/%3E%3Ccircle cx='92' cy='100' r='7'/%3E%3C/g%3E%3C/svg%3E"); }
+/* Telegram's real doodle wallpaper (src/assets/pattern.svg from telegram-tt), tinted over the green */
+.tg-full .tg-feed::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.08; mix-blend-mode: multiply; background: #123; background-repeat: repeat; background-position: center top; background-size: 510px auto;
+  -webkit-mask: url("/img/tg-pattern.svg") center top / 510px auto repeat; mask: url("/img/tg-pattern.svg") center top / 510px auto repeat; }
 .tg-feed > * { position: relative; z-index: 1; }
 /* each message: a bubble that hugs its content, incoming (Varun) left white, outgoing (you) right green */
 .tg-feed li { display: inline-flex; align-items: flex-end; gap: 7px; max-width: 84%; width: fit-content;
