@@ -243,13 +243,19 @@ body::before { content: none; }
 /* quiet talk-to-varun row */
 .talk-row { display: flex; align-items: center; gap: 12px; }
 .talk-row .hint { margin: 0; }
-/* ============ Telegram chat feed — the classic green wallpaper theme ============ */
+/* ============ Telegram chat feed — the classic green wallpaper with doodle pattern ============ */
 .tg-full .tg-feed, .tg-card .tg-feed {
-  background: #d2e4d2;
-  background-image: radial-gradient(circle at 20% 30%, rgba(255,255,255,0.35) 0 2px, transparent 3px),
-    radial-gradient(circle at 70% 60%, rgba(120,170,120,0.12) 0 3px, transparent 4px),
-    linear-gradient(160deg, #cfe3c9, #bcd8bd);
-  display: flex; flex-direction: column; gap: 5px; padding: 16px 14px; }
+  position: relative;
+  background-color: #a8c69b;
+  background-image:
+    radial-gradient(ellipse at top left, #cfe6b8, transparent 60%),
+    radial-gradient(ellipse at bottom right, #8fbf86, transparent 60%),
+    linear-gradient(150deg, #b7d6a3 0%, #9ec792 50%, #87b97f 100%);
+  display: flex; flex-direction: column; gap: 4px; padding: 16px 14px 14px; overflow-y: auto; }
+/* Telegram's doodle wallpaper, tiled, faint, over the green */
+.tg-full .tg-feed::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.09; mix-blend-mode: multiply; background-repeat: repeat; background-size: 360px auto;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23123' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 20c6-6 14-6 20 0M24 14v12'/%3E%3Ccircle cx='90' cy='26' r='8'/%3E%3Cpath d='M86 26h8M90 22v8'/%3E%3Cpath d='M20 70l8 6 10-14'/%3E%3Crect x='78' y='62' width='20' height='16' rx='3'/%3E%3Cpath d='M78 66l10 6 10-6'/%3E%3Cpath d='M52 44c0-5 4-9 9-9s9 4 9 9c0 6-9 12-9 12s-9-6-9-12z'/%3E%3Cpath d='M30 100h18M39 95v10'/%3E%3Ccircle cx='92' cy='100' r='7'/%3E%3C/g%3E%3C/svg%3E"); }
+.tg-feed > * { position: relative; z-index: 1; }
 /* each message: a bubble that hugs its content, incoming (Varun) left white, outgoing (you) right green */
 .tg-feed li { display: inline-flex; align-items: flex-end; gap: 7px; max-width: 84%; width: fit-content;
   padding: 6px 9px 5px; border-radius: 12px; border: 0; font-size: 13.5px; line-height: 18px;
