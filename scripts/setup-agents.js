@@ -67,10 +67,14 @@ const LINE_DEFS = [
     { caller_number: N, name: S('Who is calling'), reason: S('Why, in one line with any amounts') }, ['caller_number', 'reason']],
   ['set_reminder', 'The caller wants the owner to call back or be reminded of something at a time. You cannot place calls, so save a reminder; the owner gets a nudge at that time.',
     { caller_number: N, name: S('Who the reminder is about'), text: S('What to remind, e.g. "Call Rahul back about the quote"'), when: S('When, in their words: "6pm", "in 20 minutes", "tomorrow 9am"') }, ['text']],
+  ['check_calendar', "Check whether the owner is free on a day, from his Google Calendar. Use when a caller asks if he's available or wants to set a time. If the calendar is not connected, say so and take a message.",
+    { date: S("The day to check, as YYYY-MM-DD. Leave empty for today.") }, []],
+  ['check_mail', "Check the owner's recent mail for something a caller expects (e.g. an invoice, a confirmation). Read-only. If Gmail is not connected, say so.",
+    { query: S('What to look for, in Gmail search terms, e.g. "from:zepto out for delivery". Empty for the latest few.') }, []],
   ['end_call', 'Log the call before hanging up. Always call it once at the end.',
     { caller_number: N, name: S('Their name'), org: S('Their company'), kind: S('close, vip, known, service, sales, delivery or unknown'), summary: S('One line: what happened, with amounts and dates'), outcome: S('e.g. declined, message taken, agreed: rent by the 10th'), block: S('true for spam or sales, to cut them off next time'), relation: S('Who they are to the owner, if they said') }, ['caller_number', 'summary']],
 ];
-const PRE = { lookup_caller: '', classify_caller: '', check_passcode: 'Ek second', take_message: '', alert_owner: '', set_reminder: '', end_call: '', verify_caller: 'Haan ji, bolo', ask_customer: 'Haan, ruko ek second', check_approval: 'Haan ek second', next_instruction: '', rider_status: '', call_customer: 'Ruko, bulata hoon', log_outcome: '' };
+const PRE = { lookup_caller: '', classify_caller: '', check_passcode: 'Ek second', take_message: '', alert_owner: '', set_reminder: '', end_call: '', verify_caller: 'Haan ji, bolo', ask_customer: 'Haan, ruko ek second', check_approval: 'Haan ek second', next_instruction: '', rider_status: '', call_customer: 'Ruko, bulata hoon', log_outcome: '', check_calendar: 'Ek second, dekhta hoon', check_mail: 'Ek second, check karta hoon' };
 
 const toolsFor = (defs) => ({
   tools: defs.map(([name, description, properties, required]) => ({

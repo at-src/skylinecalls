@@ -899,26 +899,39 @@ function bindRail() {
   });
 }
 
-// ---- connectors: Omni-style tiles. Telegram is really wired; the rest are demo connect toggles.
-const CONNECTORS = [
-  { id: 'gmail', name: 'Gmail', sub: 'Read the "out for delivery" mail', color: '#ea4335', letter: 'M' },
-  { id: 'gcal', name: 'Google Calendar', sub: 'Know when Sam is busy', color: '#4285f4', letter: '31' },
-  { id: 'whatsapp', name: 'WhatsApp', sub: 'Updates on WhatsApp too', color: '#25d366', letter: 'W' },
-  { id: 'maps', name: 'Google Maps', sub: 'Place and route lookups', color: '#34a853', letter: '◎' },
-  { id: 'contacts', name: 'Contacts', sub: 'Import who you know', color: '#9d7bff', letter: '@' },
-  { id: 'github', name: 'GitHub', sub: 'Answer dev questions', color: '#8b8b95', letter: '' },
-];
-function renderConnectors() {
+// ---- connectors: real state from /api/connectors. Telegram + Maps are live; Gmail/Calendar are real Google OAuth;
+// the rest are honestly "soon" (disabled). Connect opens the OAuth consent in a popup; the callback posts back to us.
+async function renderConnectors() {
   const box = $('#conns'); if (!box) return;
-  const on = JSON.parse(localStorage.getItem('ttd-conn') || '{"maps":true}');
+  let data;
+  try { data = await (await fetch('/api/connectors')).json(); } catch { return; }
   box.innerHTML = '';
-  for (const c of CONNECTORS) {
-    const yes = !!on[c.id];
-    const tile = el('div', 'conn' + (yes ? ' on' : ''), `<span class="conn-ic" style="background:${c.color}">${esc(c.letter)}</span><div class="conn-t"><b>${esc(c.name)}</b><small>${esc(c.sub)}</small></div><button class="conn-btn">${yes ? 'Connected' : 'Connect'}</button>`);
-    tile.querySelector('.conn-btn').onclick = () => { on[c.id] = !on[c.id]; localStorage.setItem('ttd-conn', JSON.stringify(on)); renderConnectors(); };
+  for (const c of data.connectors) {
+    const soon = c.kind === 'soon';
+    const sub = c.connected && c.account ? `${c.sub} · ${c.account}` : c.sub;
+    const btn = soon ? '<span class="conn-btn" aria-disabled="true">Soon</span>'
+      : `<button class="conn-btn">${c.connected ? 'Connected' : 'Connect'}</button>`;
+    const tile = el('div', 'conn' + (c.connected ? ' on' : '') + (soon ? ' soon' : ''),
+      `<span class="conn-ic" style="background:${c.color}">${esc(c.letter)}</span><div class="conn-t"><b>${esc(c.name)}</b><small>${esc(sub)}</small></div>${btn}`);
+    if (!soon) {
+      const b = tile.querySelector('button.conn-btn');
+      b.onclick = () => connectorClick(c);
+    }
     box.append(tile);
   }
 }
+// Connect/disconnect a real connector. OAuth ones open Google's consent in a popup and refresh when it reports back.
+function connectorClick(c) {
+  if (c.kind === 'oauth') {
+    if (c.connected) { if (confirm(`Disconnect ${c.name}?`)) post('/api/connectors/disconnect', { id: c.id }).then(renderConnectors); return; }
+    window.open(`/connect/google?scope=${encodeURIComponent(c.scope)}`, 'skyline-connect', 'width=520,height=640');
+    return; // the popup posts 'connectors-updated' back on success (listener below)
+  }
+  // builtin/key tiles (Telegram, Maps) are connected by config, not a button; just re-read to be sure
+  renderConnectors();
+}
+// the OAuth popup calls window.opener.postMessage('connectors-updated') when it finishes
+window.addEventListener('message', (e) => { if (e.data === 'connectors-updated') renderConnectors(); });
 
 // ---- middle idle: Varun's recent activity, newest first
 const ACT_ICON = { blocked: '🚫', sales: '🚫', service: '📱', close: '💛', vip: '⭐', known: '📞', delivery: '📦', unknown: '📞' };

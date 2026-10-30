@@ -36,6 +36,10 @@ await wait(3000);
 let n = 0;
 const shot = async (name) => { await p.screenshot({ path: `scripts/line-${++n}-${name}.jpg`, type: 'jpeg', quality: 78 }); console.log('shot', n, name); };
 await shot('idle');
+if (process.env.CONN) {
+  await p.evaluate(() => document.querySelector('.rtab[data-tab="connectors"]').click());
+  await wait(800); await shot('connectors');
+}
 if (process.env.MSG) {
   await p.type('#tgInput', 'remind me to call the plumber at 6pm');
   await p.click('#tgCompose .tg-send');

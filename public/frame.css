@@ -94,6 +94,10 @@ body::before { content: none; }
 .conn-btn { padding: 7px 14px; border-radius: 9px; font-size: 12.5px; font-weight: 600; background: var(--glass); border: 1px solid var(--glass-line2); color: var(--ink); transition: all .25s var(--ease); }
 .conn.on .conn-btn { background: rgba(67,220,140,0.16); color: var(--grn); border-color: rgba(67,220,140,0.3); }
 .conn-btn:hover { border-color: var(--am); }
+/* "coming soon" tiles: dimmed, not connectable */
+.conn.soon { opacity: 0.55; }
+.conn.soon .conn-btn { cursor: default; color: var(--ink-dim); }
+.conn.soon .conn-btn:hover { border-color: var(--glass-line2); }
 
 /* ---- middle: activity + counts, or live ---- */
 .col-mid .mid-idle, .col-mid .mid-live { display: flex; flex-direction: column; min-height: 0; flex: 1; }

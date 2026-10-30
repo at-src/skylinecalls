@@ -31,10 +31,20 @@ async function telegramChat(token) {
 const old = existsSync('.env') ? Object.fromEntries(readFileSync('.env', 'utf8').split(/\r?\n/).map((l) => l.split(/=(.*)/s)).filter((x) => x[0])) : {};
 const tg = read('telegrambottoken.txt') || read('telegrambot.txt');
 
+// Google OAuth client for the Gmail + Calendar connectors. googleauth.txt is label/value lines:
+//   "Client IDs" / <id>...apps.googleusercontent.com / "" / "Client Secret (for OAuth)" / GOCSPX...
+// Pick them by shape so a reordered file still parses.
+const googleAuth = existsSync(join(desk, 'googleauth.txt')) ? readFileSync(join(desk, 'googleauth.txt'), 'utf8').split(/\r?\n/).map((l) => l.trim()) : [];
+const googleClientId = googleAuth.find((l) => /\.apps\.googleusercontent\.com$/.test(l)) || '';
+const googleClientSecret = googleAuth.find((l) => /^GOCSPX/.test(l)) || '';
+
 const vars = {
   BOLNA_API_KEY: read('bolnaapi.txt'),
   MAPPLS_KEY: read('mapplsapi.txt'),
   GOOGLE_MAPS_KEY: read('gmaps3d.txt'),
+  // Gmail + Google Calendar connectors (OAuth). Keep an existing value if the Desktop file is gone.
+  GOOGLE_CLIENT_ID: googleClientId || old.GOOGLE_CLIENT_ID || '',
+  GOOGLE_CLIENT_SECRET: googleClientSecret || old.GOOGLE_CLIENT_SECRET || '',
   TELEGRAM_BOT_TOKEN: tg,
   TELEGRAM_CHAT_ID: (await telegramChat(tg)) || old.TELEGRAM_CHAT_ID || '',
   RIDER_PHONE: phone(read('myphone.txt', 0)),

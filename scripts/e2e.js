@@ -216,6 +216,18 @@ console.log("\n== 15. Sam's line: every call, by who it is");
   const L = await (await fetch(base + '/api/line')).json();
   check('call log and memory kept', L.calls.length >= 6 && L.people.some((p) => p.number === SPAM && p.kind === 'blocked'), `${L.calls.length} calls`);
 }
+console.log('\n== 16. Connectors registry: honest, live state (no live OAuth here)');
+{
+  const { connectors, redirect_uri } = await (await fetch(base + '/api/connectors')).json();
+  const by = Object.fromEntries(connectors.map((c) => [c.id, c]));
+  check('registry lists maps, gmail, gcal and the "soon" ones', ['maps', 'gmail', 'gcal', 'whatsapp', 'github', 'contacts'].every((id) => by[id]));
+  check('maps is a key connector, connected when the Maps key is set', by.maps.kind === 'key' && by.maps.connected === true);
+  check('gmail/gcal are oauth and not connected in a fresh data dir', by.gmail.kind === 'oauth' && by.gmail.connected === false && by.gcal.connected === false);
+  check('whatsapp/github/contacts are "soon", never connected', ['whatsapp', 'github', 'contacts'].every((id) => by[id].kind === 'soon' && by[id].connected === false));
+  check('callback redirect uri is exposed for the console step', /\/connect\/google\/callback$/.test(redirect_uri || ''), redirect_uri);
+  const dc = await post('/api/connectors/disconnect', { id: 'gmail' });
+  check('disconnect is a safe no-op when nothing is linked', dc.ok === true && dc.connected === false);
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 server.close();
 process.exit(fail ? 1 : 0);

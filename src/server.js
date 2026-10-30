@@ -19,6 +19,7 @@ import { startCalibration, getCalibration, saveAnchor, saveStep, saveDoor, saveF
 import { cityAt } from './city.js';
 import * as A from './assistant.js';
 import { demoCall, personaList } from './demo/calls.js';
+import { registry as connectorRegistry, disconnect as connectorDisconnect, authUrl, handleCallback, redirectUri, gmailRecent, calendarBusy } from './connectors.js';
 const mints = new Map(); let lastMint = 0;
 
 const PORT = Number(env.PORT || 3200);
@@ -108,6 +109,29 @@ const TOOLS = {
     const v = visitOf(val(a.visit_id));
     if (!v) return { say: 'OK.' };
     return outcome(v, val(a.result) || 'delivered', val(a.note));
+  },
+
+  // ----- connectors Varun can use on a call (only if the owner linked them) -----
+  // Is the owner free on a day? Reads Google Calendar (read-only). Needs the gcal connector.
+  async check_calendar(a) {
+    const r = await calendarBusy(val(a.date));
+    if (!r.connected) return { say: "Google Calendar isn't connected, so I can't see his schedule. I can take a message instead." };
+    if (!r.ok) return { say: "I couldn't read the calendar just now. I can take a message instead." };
+    if (r.free) return { say: `Nothing is on ${r.date} — he looks free that day.` };
+    const list = r.events.slice(0, 4).map((e) => {
+      const t = e.allDay ? 'all day' : new Date(e.start).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+      return `${e.summary} (${t})`;
+    }).join('; ');
+    return { say: `On ${r.date} he has: ${list}. So he's busy then.` };
+  },
+  // Did an expected mail arrive? Reads Gmail (read-only) for recent subjects. Needs the gmail connector.
+  async check_mail(a) {
+    const r = await gmailRecent({ query: val(a.query), max: 5 });
+    if (!r.connected) return { say: "Gmail isn't connected, so I can't check his mail. I can take a message instead." };
+    if (!r.ok) return { say: "I couldn't read the mail just now." };
+    if (!r.messages.length) return { say: val(a.query) ? "Nothing matching that in his recent mail." : 'His inbox looks quiet — nothing recent.' };
+    const list = r.messages.slice(0, 3).map((m) => m.subject).join('; ');
+    return { say: `Recent mail: ${list}.` };
   },
 };
 
@@ -251,6 +275,9 @@ const routes = {
     return j;
   },
   'POST /bolna/webhook': async (b) => { emit('bolna.event', { status: b.status, execution: b.id || b.execution_id, transcript: (b.transcript || '').slice(-600) }); return { ok: true }; },
+  // ----- connectors: the registry with live connected state, and a disconnect -----
+  'GET /api/connectors': () => ({ connectors: connectorRegistry(), redirect_uri: redirectUri() }),
+  'POST /api/connectors/disconnect': (b) => connectorDisconnect(String(b.id || '')),
 };
 
 const server = createServer(async (req, res) => {
@@ -282,6 +309,24 @@ const server = createServer(async (req, res) => {
       if (om[2] === '/location' && req.method === 'POST') return json(res, 200, orderLocation(o, body));
       if (om[2] === '/status' && req.method === 'POST') return json(res, 200, orderStatus(o, body));
       return json(res, 405, { error: 'method not allowed' });
+    }
+    // ----- Google OAuth: start consent -----
+    // GET /connect/google?scope=gmail|calendar -> 302 to Google's consent screen
+    if (url.pathname === '/connect/google' && req.method === 'GET') {
+      const to = authUrl(url.searchParams.get('scope') || 'gmail');
+      if (!to) { res.writeHead(400, { 'Content-Type': 'text/plain' }); return res.end('Google connector is not configured. Run: npm run keys'); }
+      res.writeHead(302, { Location: to }); return res.end();
+    }
+    // ----- Google OAuth: Google sends the user back here with ?code -----
+    if (url.pathname === '/connect/google/callback' && req.method === 'GET') {
+      const err = url.searchParams.get('error');
+      const page = (title, body) => `<!doctype html><meta charset=utf-8><title>${title}</title><body style="font:16px system-ui;background:#0e141b;color:#e7edf3;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center;max-width:360px"><h2 style="margin:0 0 8px">${title}</h2><p style="opacity:.75;margin:0 0 18px">${body}</p><a href="/" style="color:#4aa8ff">Back to Skyline</a><script>try{if(window.opener){window.opener.postMessage('connectors-updated','*');setTimeout(()=>window.close(),1200)}}catch(e){}</script></div></body>`;
+      if (err) { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(page('Not connected', 'You can close this tab and try again.')); }
+      const out = await handleCallback({ code: url.searchParams.get('code'), state: url.searchParams.get('state') });
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      return res.end(out.ok
+        ? page('Connected', 'Varun can use this now. You can close this tab.')
+        : page('Not connected', 'Something went wrong linking the account. You can close this tab and try again.'));
     }
     // live event stream for the screen
     if (url.pathname === '/api/events' && req.method === 'GET') {
