@@ -284,10 +284,10 @@ body::before { content: none; }
 .rabbit .ear::after { background: #e8a7bd; opacity: 0.7; }
 .rabbit .paw { background: #b6c0ce; }
 /* closed sleeping eye: a downward curved lash, clearly visible on the grey */
-/* closed sleeping eye: a bold dark downward crescent, clearly visible on the grey face */
-.rabbit .eye { left: 14px; top: 16px; width: 14px; height: 9px; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
-.rabbit .eye::before { content: ""; position: absolute; inset: 0; border: 3px solid #37414f; border-top-color: transparent; border-left-color: transparent; border-right-color: transparent; border-bottom-left-radius: 14px; border-bottom-right-radius: 14px; }
-.rabbit .nose { left: 2px; top: 26px; width: 7px; height: 6px; background: #e8879f; }
+/* closed sleeping eye: a bold dark curved stroke (a wide ∪), clearly visible on the grey face */
+.rabbit .head { overflow: visible; }
+.rabbit .eye { left: 13px; top: 18px; width: 16px; height: 10px; background: transparent; border: 0; border-bottom: 3px solid #2b3545; border-radius: 0 0 16px 16px; box-shadow: none; z-index: 3; }
+.rabbit .nose { left: 1px; top: 28px; width: 8px; height: 6px; background: #e8879f; z-index: 3; }
 .rabbit .whisk { left: -12px; top: 29px; background: rgba(60,74,92,0.3); box-shadow: 0 4px rgba(60,74,92,0.22), 0 -4px rgba(60,74,92,0.22); }
 .rabbit .zzz span { color: var(--am); }
 /* ============ light-theme component overrides (white panels, ice bg) ============ */
