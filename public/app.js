@@ -34,6 +34,16 @@ async function boot() {
   bindLine();
   bindRail();
   renderConnectors();
+  // Telegram compose: send a message to Varun from the UI (same path as the real bot)
+  $('#tgCompose').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const inp = $('#tgInput'), text = inp.value.trim();
+    if (!text) return;
+    inp.value = '';
+    const r = await post('/api/message', { text });
+    if (r.reply) setTimeout(() => tg(r.reply, 'bot'), 300);
+    loadLine();
+  });
   setView('mind');
   listen();
   refreshExpect();
@@ -525,6 +535,7 @@ function handle(e) {
     }
     case 'line.ended': onLineEnded(e); break;
     case 'line.updated': reloadLine(); break;
+    case 'reminder.fired': reloadLine(); break;
     case 'map.highlight': onHighlight(e); break;
     case 'order.created': case 'order.location': case 'order.status': onOrder(e); break;
     case 'calib.anchor': taughtStop({ lat: e.lat, lng: e.lng, label: e.name, n: 0 }); break;
@@ -676,9 +687,14 @@ const reloadLine = () => { clearTimeout(lineT); lineT = setTimeout(loadLine, 250
 
 function renderLine() {
   const P = LINE.profile;
-  $('#ownerTag').textContent = `Varun is answering for ${P.owner}`;
   document.querySelectorAll('#modeSeg button').forEach((b) => { b.classList.toggle('on', b.dataset.mode === P.mode); b.setAttribute('aria-pressed', String(b.dataset.mode === P.mode)); });
-  $('#modeNote').textContent = { available: `${P.owner} is available: close ones and VIPs can get him right away. Everyone else is handled by the rules.`, busy: `${P.owner} is in a meeting${P.busy_until ? ' till ' + P.busy_until : ''}: everyone hears he's busy, messages go to his phone.`, sleep: `${P.owner} is asleep: nobody reaches him unless they say his code.` }[P.mode];
+  $('#midTitle').textContent = `${P.owner}'s line`;
+  $('#ownerTag').textContent = 'Varun is answering';
+  $('#modeNote').textContent = {
+    available: `Available — calls ring ${P.owner} directly. Varun only picks up a missed call and takes a message.`,
+    screened: `Screened — Varun answers first, filters spam and services, and puts real people through to ${P.owner}.`,
+    unavailable: `Unavailable — Varun handles every call. Only ${P.owner}'s code reaches him.`,
+  }[P.mode];
   $('#codeVal').textContent = $('#codeChip').dataset.show ? P.passcode : '•••••';
   // today's call counts, from the log
   const today = new Date().toDateString();
@@ -691,6 +707,7 @@ function renderLine() {
   $('#ctPassed').textContent = passed;
   // the call log
   renderActivity();
+  renderTasks();
   renderHistory();
   // briefings
   const bl = $('#briefList'); bl.innerHTML = '';
@@ -759,7 +776,7 @@ async function toggleTalk() {
   if (webCall) { await webCall.stop().catch(() => {}); return; }
   if (!LINE?.web_call) { hint.textContent = 'Talking to it needs the live server (web calls are off here). Try the calls above.'; return; }
   if (!window.BolnaWebCall) { hint.textContent = "The call library didn't load. Check the connection and reload."; return; }
-  const from = $('#talkAs').value;
+  const from = $('#talkAs').value || 'new';
   const number = from === 'new' ? '+9190' + String(Math.floor(10000000 + Math.random() * 89999999)) : from;
   hint.textContent = 'Connecting… allow the microphone.';
   btn.disabled = true;
@@ -826,7 +843,7 @@ function onLineTool(tool, out, args) {
       $('#lcKnow').innerHTML = '<p class="none-note">Not in Sam\'s contacts. Never called before.</p>';
       liveStep('<b>Unknown number</b> · asking who it is and why, not saying Sam is away yet');
     }
-    liveStep(`Mode: <b>${esc({ available: 'Sam available', busy: 'Sam in a meeting', sleep: 'Sam asleep' }[out.mode] || out.mode || '')}</b>`);
+    liveStep(`Mode: <b>${esc({ available: 'Available', screened: 'Screened', unavailable: 'Unavailable' }[out.mode] || out.mode || '')}</b>`);
   } else if (tool === 'classify_caller') {
     const name = [args?.name, args?.org].filter(Boolean).join(' · ');
     setLiveKind(out.kind);
@@ -905,10 +922,24 @@ function renderConnectors() {
 
 // ---- middle idle: Varun's recent activity, newest first
 const ACT_ICON = { blocked: '🚫', sales: '🚫', service: '📱', close: '💛', vip: '⭐', known: '📞', delivery: '📦', unknown: '📞' };
+function renderTasks() {
+  const box = $('#tasks'); if (!box) return;
+  box.innerHTML = '';
+  const rem = LINE.reminders || [];
+  if (!rem.length) { box.append(el('li', 'none-note', 'Nothing waiting. Varun adds reminders here when a caller asks for a callback, or when you tell him to remind you.')); return; }
+  for (const r of rem) {
+    const at = r.at ? new Date(r.at) : null;
+    const when = at ? at.toLocaleString('en-IN', { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }) : 'later';
+    const li = el('li', 'task' + (r.fired ? ' fired' : ''), `<span class="task-ic">⏰</span><span class="task-t">${esc(r.text)}</span><span class="task-when">${when}</span>`);
+    const done = el('button', 'task-x', '✓'); done.title = 'Done'; done.setAttribute('aria-label', 'Mark done');
+    done.onclick = async () => { await post('/api/reminders/done', { id: r.id }); loadLine(); };
+    li.append(done); box.append(li);
+  }
+}
 function renderActivity() {
   const box = $('#activity'); if (!box) return;
   box.innerHTML = '';
-  if (!LINE.calls.length) { box.append(el('li', 'none-note', 'Nothing yet. Try a call from the left, under The line.')); return; }
+  if (!LINE.calls.length) { box.append(el('li', 'none-note', "No calls yet. When one comes in, Varun handles it and it shows up here.")); return; }
   for (const c of LINE.calls.slice(0, 20)) {
     const t = new Date(c.at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
     const who = c.name || c.org || showNum(c.number);

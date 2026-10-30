@@ -36,7 +36,11 @@ await wait(3000);
 let n = 0;
 const shot = async (name) => { await p.screenshot({ path: `scripts/line-${++n}-${name}.jpg`, type: 'jpeg', quality: 78 }); console.log('shot', n, name); };
 await shot('idle');
-if (process.env.TRY) { await p.evaluate(() => document.getElementById('tryFab').click()); await wait(600); await shot('dialer'); await p.evaluate(() => document.getElementById('tryClose').click()); }
+if (process.env.MSG) {
+  await p.type('#tgInput', 'remind me to call the plumber at 6pm');
+  await p.click('#tgCompose .tg-send');
+  await wait(1500); await shot('reminder');
+}
 const idx = { sales: 0, friend: 1, mom: 2, landlord: 3, jio: 4, investor: 5, delivery: 6 };
 for (const [persona, secs] of (process.argv[2] || 'sales:16,landlord:30,delivery:50').split(',').map((s) => s.split(':'))) {
   await p.evaluate((i) => document.querySelectorAll('#personas .persona')[i].click(), idx[persona]);

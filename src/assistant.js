@@ -10,13 +10,16 @@ import { env } from './env.js';
 // ---------- what Sam told it ----------
 export const KINDS = ['close', 'vip', 'known', 'service', 'sales', 'delivery', 'unknown'];
 export const KIND_LABEL = { close: 'Close one', vip: 'VIP', known: 'Known', service: 'Service', sales: 'Sales / spam', delivery: 'Delivery / cab', unknown: 'Unknown', blocked: 'Blocked' };
+// Three modes. Note: in a real deploy, "available" means the call rings the owner directly and Varun never picks up;
+// Varun only answers in screened/unavailable. In this demo every call reaches Varun so it can be shown, but the mode
+// still changes how he behaves on the line.
 export const MODES = {
-  available: 'Sam can take calls. For close ones and VIPs, offer to get him right away (alert_owner).',
-  busy: 'Sam is in a meeting. Everyone hears he is busy and you will tell him. Only urgent things from close ones or VIPs get alert_owner.',
-  sleep: 'Sam is asleep. Nobody reaches him unless they give his passcode. Take messages.',
+  available: '{owner} takes calls himself. You only pick up if he misses it. Keep it short: greet, say you will let him know, and alert him for anyone he knows.',
+  screened: '{owner} is reachable but wants calls screened. Answer every call, work out who it is, handle spam and services yourself, and put real people through by alerting {owner} (close ones and VIPs, or a correct passcode).',
+  unavailable: '{owner} is not taking calls. Handle everything yourself: decline spam, deal with services, take messages. Only a correct passcode reaches him.',
 };
 const DEFAULT_PROFILE = {
-  owner: 'Sam', mode: 'busy', passcode: '55434', busy_until: '6 pm',
+  owner: 'Sam', mode: 'screened', passcode: '55434', busy_until: '',
   rules: {
     close: { say: 'Greet them by name. Say Sam is busy and take the message. If it is urgent, alert him.', budget: 120 },
     vip: { say: 'Be respectful. Take the message and alert Sam right away.', budget: 60 },
@@ -163,7 +166,7 @@ function current(number) {
 const ownerName = () => profile().owner;
 function modeLine() {
   const p = profile();
-  return `MODE: ${p.mode}${p.mode === 'busy' && p.busy_until ? ` (until ${p.busy_until})` : ''}. ${MODES[p.mode]}`;
+  return `MODE: ${p.mode}. ${(MODES[p.mode] || '').replaceAll('{owner}', p.owner)}`;
 }
 function ruleLine(kind) { const r = profile().rules[kind] || profile().rules.unknown; return `RULE for ${KIND_LABEL[kind]}: ${r.say} Keep this call under ${r.budget} seconds.`; }
 
@@ -258,4 +261,57 @@ export function endCall({ caller_number, name, org, kind, summary, outcome, bloc
   // a message already went to Sam on its own; the summary would only repeat it
   if (k !== 'delivery' && !c.message) notify(`${icon} ${label}, ${seconds}s: ${summary || outcome || 'call handled'}.${tail}`);
   return { ok: true, say: 'Logged. Say a short goodbye and hang up.' };
+}
+
+// ---------- reminders / tasks ----------
+// Skyline only receives calls; it can't place outbound ones (that needs a verified number + KYC). So when a caller
+// asks the owner to "call back at 6", or the owner asks Varun to remind him of something, Varun saves a reminder and
+// nudges the owner on Telegram at the time. Shown in the middle "Tasks" list.
+export const reminders = () => load('reminders', []);
+const saveReminders = (r) => { save('reminders', r); emit('line.updated', { what: 'reminders' }); return r; };
+// parse a rough time like "6pm", "17:30", "in 20 min", "tomorrow 9am" -> a timestamp (best effort, local)
+function whenTs(text, base = Date.now()) {
+  const t = String(text || '').toLowerCase().trim();
+  if (!t) return null;
+  let m = t.match(/in\s+(\d+)\s*(min|minute|minutes|hour|hours|hr|hrs)/);
+  if (m) return base + Number(m[1]) * (/h/.test(m[2]) ? 3600e3 : 60e3);
+  const day = /tomorrow/.test(t) ? 1 : 0;
+  m = t.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  if (!m) return null;
+  let h = Number(m[1]); const min = Number(m[2] || 0); const ap = m[3];
+  if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0;
+  const d = new Date(base); d.setDate(d.getDate() + day); d.setHours(h, min, 0, 0);
+  if (!day && d.getTime() <= base) d.setDate(d.getDate() + 1); // next occurrence
+  return d.getTime();
+}
+export function addReminder({ text, when, kind = 'callback', number = '', name = '' }) {
+  const at = typeof when === 'number' ? when : whenTs(when);
+  const r = { id: id('r'), text: String(text || '').slice(0, 200), at, kind, number: normNumber(number) || '', name: String(name || ''), done: false, created: new Date().toISOString() };
+  const list = reminders(); list.unshift(r); saveReminders(list);
+  const whenStr = at ? new Date(at).toLocaleString('en-IN', { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }) : 'later';
+  notify(`⏰ Reminder set: ${r.text}${at ? ` — I'll nudge you at ${new Date(at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}.` : '.'}`);
+  return { ok: true, id: r.id, when: whenStr, say: `Saved. ${ownerName()} will get a reminder${at ? ' at ' + whenStr : ''}.` };
+}
+export function doneReminder(rid) { const l = reminders(); const r = l.find((x) => x.id === rid); if (r) r.done = true; saveReminders(l); return { ok: !!r }; }
+// fire any reminder whose time has come
+export function sweepReminders(now = Date.now()) {
+  const l = reminders(); let changed = false;
+  for (const r of l) if (!r.done && !r.fired && r.at && r.at <= now) {
+    r.fired = true; changed = true;
+    notify(`⏰ ${r.text}${r.number ? ` — ${r.name || showNumber(r.number)}` : ''}. (You asked me to remind you.)`);
+    emit('reminder.fired', { id: r.id, text: r.text });
+  }
+  if (changed) saveReminders(l);
+}
+// the owner types to Varun (Telegram or the UI compose box): handle plain commands, else make it a note/reminder
+const REMIND_RE = /^(remind me|reminder|remind)\b/i;
+export function ownerMessage(text) {
+  const t = String(text || '').trim();
+  if (!t) return null;
+  if (REMIND_RE.test(t)) {
+    const body = t.replace(REMIND_RE, '').replace(/^\s*(to|about|that)\s+/i, '').trim();
+    const timeM = body.match(/\b(at|by|in|tomorrow)\b.*/i);
+    return addReminder({ text: body || 'reminder', when: timeM ? timeM[0] : null, kind: 'note' });
+  }
+  return null; // not a reminder; telegram.js handles the rest (modes, save/block, confirms)
 }

@@ -6,7 +6,7 @@ import { env } from './env.js';
 import { emit } from './store.js';
 import { createVisit, activeVisits, awaitingVisits, detectService, closeVisit } from './visits.js';
 import { confirmDelivery } from './guide.js';
-import { setMode, savePerson, KIND_LABEL } from './assistant.js';
+import { setMode, savePerson, KIND_LABEL, ownerMessage } from './assistant.js';
 import { resolveApproval } from './notify.js';
 import { setPosition, getRider } from './rider.js';
 
@@ -22,12 +22,15 @@ export function handleText(text) {
   if (/^\/start|^hi$|^hello$|^help/.test(low)) {
     return 'Hi! Tell me when someone is coming, e.g. "I have an order with Zepto" or "booked an Uber". I\'ll guide only them to your door. Send "status" to see who\'s expected.';
   }
-  // Sam's line: 'busy' / 'available' / 'sleep', and 'save 98450 12345 as Ankit, cousin' (or 'block 98450 12345')
-  const mode = low.match(/^(busy|meeting|available|free|sleep|sleeping|dnd)\b/);
+  // reminders: "remind me to call Rahul at 6pm"
+  const rem = ownerMessage(t);
+  if (rem) return rem.say || 'Saved.';
+  // modes: available / screened / unavailable (and friendly words)
+  const mode = low.match(/^(available|free|screen|screened|filter|unavailable|busy|dnd|do not disturb)\b/);
   if (mode) {
-    const m = { busy: 'busy', meeting: 'busy', dnd: 'busy', available: 'available', free: 'available', sleep: 'sleep', sleeping: 'sleep' }[mode[1]];
+    const m = { available: 'available', free: 'available', screen: 'screened', screened: 'screened', filter: 'screened', unavailable: 'unavailable', busy: 'unavailable', dnd: 'unavailable', 'do not disturb': 'unavailable' }[mode[1]];
     setMode(m);
-    return { busy: 'In a meeting: everyone hears you are busy, I take messages.', available: "Available: close ones and VIPs can get you right away.", sleep: 'Sleeping: only your passcode gets through.' }[m];
+    return { available: 'Available: calls ring you directly. I only pick up a missed one.', screened: 'Screened: I answer first, filter spam, and put real people through.', unavailable: 'Unavailable: I handle everything; only your code reaches you.' }[m];
   }
   const sv = t.match(/^(save|block)\s+(\+?[\d\s-]{10,16})(?:\s+as\s+([^,]+?)(?:,\s*(.+))?)?$/i);
   if (sv) {

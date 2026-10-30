@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Skyline · Varun answers your calls</title>
+  <title>Skyline — your personal call assistant</title>
   <meta name="description" content="Skyline is a call agent named Varun that answers every call for you: knows who's who, follows your rules, handles spam and services, and guides deliveries to your door." />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231d5c54'/><path d='M5 23V15l4-2v10zM12 23V9l4 2v12zM19 23V7l4 3v13zM26 23v-6l1 1v5z' fill='%23ffb43f'/><circle cx='24' cy='6' r='2' fill='%234fe39a'/></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23214a80'/><path d='M5 23V15l4-2v10zM12 23V9l4 2v12zM19 23V7l4 3v13zM26 23v-6l1 1v5z' fill='%23ffb43f'/><circle cx='24' cy='6' r='2' fill='%234fe39a'/></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -25,8 +25,8 @@
         <span class="bn">Skyline</span><span class="bn-sub">// Varun, your call agent</span>
       </div>
       <div class="bar-right">
-        <div class="seg" id="modeSeg" role="group" aria-label="Sam is">
-          <button data-mode="available">Available</button><button data-mode="busy">In a meeting</button><button data-mode="sleep">Sleeping</button>
+        <div class="seg" id="modeSeg" role="group" aria-label="Call handling">
+          <button data-mode="available" title="Calls ring you; Varun only picks up if you miss it">Available</button><button data-mode="screened" title="Varun answers first to filter, and puts real people through">Screened</button><button data-mode="unavailable" title="Varun handles everything; only your code reaches you">Unavailable</button>
         </div>
         <span class="statuspill" id="callTag"><span class="d"></span>Idle</span>
       </div>
@@ -35,7 +35,7 @@
     <div class="grid" id="grid">
       <!-- icon rail -->
       <nav class="rail" aria-label="Sections">
-        <button class="rtab on" data-tab="line" title="The line" aria-label="The line"><svg viewBox="0 0 24 24"><path d="M6.6 10.8a15 15 0 006.6 6.6l2.2-2.2a1 1 0 011-.24 11.4 11.4 0 003.6.58 1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1 11.4 11.4 0 00.58 3.6 1 1 0 01-.24 1z"/></svg></button>
+        <button class="rtab on" data-tab="messages" title="Messages" aria-label="Messages"><svg viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 011 1v11a1 1 0 01-1 1H9l-4 4v-4H4a1 1 0 01-1-1V5a1 1 0 011-1z"/></svg></button>
         <button class="rtab" data-tab="connectors" title="Connectors" aria-label="Connectors"><svg viewBox="0 0 24 24"><path d="M10 3a1 1 0 011 1v4h2V4a1 1 0 112 0v4h1a1 1 0 011 1v3a5 5 0 01-4 4.9V21a1 1 0 11-2 0v-3.1A5 5 0 017 13V9a1 1 0 011-1h1V4a1 1 0 011-1z"/></svg></button>
         <button class="rtab" data-tab="context" title="Context & memory" aria-label="Context and memory"><svg viewBox="0 0 24 24"><path d="M12 3a4 4 0 014 4v1a3 3 0 010 6v2a4 4 0 01-8 0v-2a3 3 0 010-6V7a4 4 0 014-4z"/></svg></button>
         <button class="rtab" data-tab="history" title="Call history" aria-label="Call history"><svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 11-8.5 12 1 1 0 011.9-.6A7 7 0 1013 5a7 7 0 00-6 3.5h3a1 1 0 110 2H4a1 1 0 01-1-1V5a1 1 0 112 0v1.7A9 9 0 0113 3zm-.5 4a1 1 0 011 1v3.6l2.2 1.3a1 1 0 11-1 1.7l-2.7-1.6a1 1 0 01-.5-.9V8a1 1 0 011-1z"/></svg></button>
@@ -43,15 +43,22 @@
         <button class="rtab" data-tab="settings" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 100 8 4 4 0 000-8zm8.4 4l1.5 1.2-1.5 2.6-1.9-.5a6.9 6.9 0 01-1.5.9l-.3 2h-3l-.3-2a6.9 6.9 0 01-1.5-.9l-1.9.5-1.5-2.6L7 12l-1.5-1.2 1.5-2.6 1.9.5c.5-.4 1-.7 1.5-.9l.3-2h3l.3 2c.5.2 1 .5 1.5.9l1.9-.5 1.5 2.6z"/></svg></button>
       </nav>
 
-      <!-- LEFT column: the selected tab (default = connectors, with Telegram live) -->
-      <section class="col col-left" id="leftCol" aria-label="Connectors and tabs">
-        <!-- connectors tab: Telegram live feed on top, then connect tiles -->
-        <div class="tabpane on" data-pane="connectors">
-          <div class="col-head"><h2>Connectors</h2><span class="col-sub">What Varun can see and reach</span></div>
-          <div class="tg-card">
-            <div class="tg-card-head"><span class="tg-ic" aria-hidden="true"></span><div><b>Telegram</b><small>Connected · Varun messages you here</small></div><span class="dot-on" title="Connected"></span></div>
+      <!-- LEFT column: default = Messages (the connected Telegram feed) -->
+      <section class="col col-left" id="leftCol" aria-label="Connected apps and tabs">
+        <!-- messages tab: the live Telegram feed, full height -->
+        <div class="tabpane on" data-pane="messages">
+          <div class="tg-full">
+            <div class="tg-card-head"><span class="tg-ic" aria-hidden="true"></span><div><b>Telegram</b><small>Your two-way line with Varun</small></div><span class="dot-on" title="Connected"></span></div>
             <ol class="tg-feed" id="tgFeed"></ol>
+            <form class="tg-compose" id="tgCompose">
+              <input id="tgInput" placeholder="Message Varun… (e.g. remind me to call the plumber at 5)" autocomplete="off" aria-label="Message Varun" />
+              <button class="tg-send" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3.4 20.4l17.4-8a1 1 0 000-1.8l-17.4-8a1 1 0 00-1.4 1.1L4 10l10 1.5L4 13l-2 5.3a1 1 0 001.4 1.1z"/></svg></button>
+            </form>
           </div>
+        </div>
+        <!-- connectors tab: the connect grid (marketplace) -->
+        <div class="tabpane" data-pane="connectors" hidden>
+          <div class="col-head"><h2>Connectors</h2><span class="col-sub">Give Varun more to work with</span></div>
           <div class="conns" id="conns"></div>
         </div>
         <!-- context tab -->
@@ -96,47 +103,47 @@
             </div>
           </div>
         </div>
-        <!-- line tab = home: mode note + quick launch (same as connectors default but with the try dock) -->
-        <div class="tabpane" data-pane="line" hidden>
-          <div class="col-head"><h2>The line</h2><span class="col-sub" id="ownerTag">Varun is answering for Sam</span></div>
-          <p class="mode-note" id="modeNote"></p>
-          <div class="try-inline">
-            <h3>Try Varun</h3>
-            <p class="try-sub">Call the line as one of these, or talk to Varun with your mic.</p>
-            <div class="personas" id="personas"></div>
-            <div class="talk" id="talk">
-              <select id="talkAs" aria-label="Calling from"></select>
-              <button class="btn amber" id="talkBtn"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 006 6.92V21h2v-2.08A7 7 0 0019 12h-2z"/></svg><span>Talk to Varun</span></button>
-            </div>
-            <button class="textlink" id="teachDemo">Teach the door by voice</button>
-            <p class="hint" id="callHint"></p>
-          </div>
-          <!-- sender mode fills this pane instead -->
-          <section class="sender" id="senderPanel" hidden>
-            <div class="stats" id="senderStats"></div>
-            <div class="orders-head"><span>Live deliveries</span><button class="textlink" id="runShift">Run a delivery shift</button></div>
-            <ol class="orders" id="orders"><li class="none">No riders out. Run a delivery shift to see them on the map.</li></ol>
-            <details class="integ"><summary>Integration</summary>
-              <div class="kv"><span>Number riders call</span><code id="guideNumber"></code></div>
-              <div class="kv"><span>API key</span><code id="apiKey"></code></div>
-              <div class="kv"><span>Endpoints</span><code>POST /v1/orders · /v1/orders/:id/location · /v1/orders/:id/status</code></div>
-            </details>
-          </section>
-        </div>
       </section>
 
       <!-- MIDDLE column: Varun's activity (idle) or the live thinking steps -->
       <section class="col col-mid" id="midCol" aria-label="What Varun is doing">
-        <!-- idle: recent activity + telemetry -->
+        <!-- idle: mode, counts, activity, and the try launcher -->
         <div class="mid-idle" id="midIdle">
-          <div class="col-head"><h2>Activity</h2><span class="col-sub">What Varun has been doing</span></div>
-          <div class="counts" id="counts">
-            <div class="ct"><b id="ctTotal">0</b><span>today</span></div>
-            <div class="ct ok"><b id="ctHandled">0</b><span>handled</span></div>
-            <div class="ct stop"><b id="ctBlocked">0</b><span>blocked</span></div>
-            <div class="ct live"><b id="ctPassed">0</b><span>to you</span></div>
+          <div class="col-head"><h2 id="midTitle">Sam's line</h2><span class="col-sub" id="ownerTag">Varun is answering</span></div>
+          <div class="scroll mid-scroll">
+            <p class="mode-note" id="modeNote"></p>
+            <div class="counts" id="counts">
+              <div class="ct"><b id="ctTotal">0</b><span>today</span></div>
+              <div class="ct ok"><b id="ctHandled">0</b><span>handled</span></div>
+              <div class="ct stop"><b id="ctBlocked">0</b><span>blocked</span></div>
+              <div class="ct live"><b id="ctPassed">0</b><span>to you</span></div>
+            </div>
+            <div class="act-blk tasks-blk">
+              <h3>To-do <small>reminders &amp; what's waiting</small></h3>
+              <ol class="tasks" id="tasks"></ol>
+            </div>
+            <div class="act-blk">
+              <h3>Recent activity</h3>
+              <ol class="activity" id="activity"></ol>
+            </div>
+            <div class="talk-row" id="talk">
+              <select id="talkAs" aria-label="Calling from" hidden></select>
+              <button class="btn ghost" id="talkBtn"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 003-3V6a3 3 0 10-6 0v6a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 006 6.92V21h2v-2.08A7 7 0 0019 12h-2z"/></svg><span>Talk to Varun</span></button>
+              <p class="hint" id="callHint"></p>
+            </div>
+            <div hidden><div id="personas"></div><button id="teachDemo"></button></div>
+            <!-- sender mode shows deliveries here -->
+            <section class="sender" id="senderPanel" hidden>
+              <div class="stats" id="senderStats"></div>
+              <div class="orders-head"><span>Live deliveries</span><button class="textlink" id="runShift">Run a delivery shift</button></div>
+              <ol class="orders" id="orders"><li class="none">No riders out. Run a delivery shift to see them on the map.</li></ol>
+              <details class="integ"><summary>Integration</summary>
+                <div class="kv"><span>Number riders call</span><code id="guideNumber"></code></div>
+                <div class="kv"><span>API key</span><code id="apiKey"></code></div>
+                <div class="kv"><span>Endpoints</span><code>POST /v1/orders · /v1/orders/:id/location · /v1/orders/:id/status</code></div>
+              </details>
+            </section>
           </div>
-          <ol class="activity" id="activity"></ol>
         </div>
         <!-- in a call: live thinking -->
         <div class="mid-live" id="liveView" hidden>
@@ -174,7 +181,7 @@
       <!-- RIGHT column: the live call + transcript -->
       <aside class="col col-right" id="callCol" aria-label="Live call">
         <div class="call-head">
-          <div><p class="eyebrow" id="roleLabel">On the line</p><h2 id="household">Sam's Skyline</h2></div>
+          <div><p class="eyebrow" id="roleLabel">On the line</p><h2 id="household">Sam's line</h2></div>
           <span class="call-timer" id="timer" hidden>00:00</span>
         </div>
 

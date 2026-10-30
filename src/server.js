@@ -9,7 +9,7 @@ import { getDoor, defaultDoorId } from './doors.js';
 import { verify, status, next, outcome, visitOf, confirmDelivery, closeUnanswered } from './guide.js';
 import { requestApproval, waitApproval, getApproval, resolveApproval, ringCustomer, notify } from './notify.js';
 import { setPosition, planRide, startSim, stopSim, getRider, advance } from './rider.js';
-import { startTelegram } from './telegram.js';
+import { startTelegram, handleText } from './telegram.js';
 import { findPlace } from './maps.js';
 import { replay } from './demo/replay.js';
 import { teach } from './demo/teach.js';
@@ -101,6 +101,9 @@ const TOOLS = {
   async take_message(a) { return A.takeMessage({ caller_number: val(a.caller_number), name: val(a.name), message: val(a.message), urgent: val(a.urgent) }); },
   async alert_owner(a) { return A.alertOwner({ caller_number: val(a.caller_number), name: val(a.name), reason: val(a.reason) }); },
   async end_call(a) { return A.endCall({ caller_number: val(a.caller_number), name: val(a.name), org: val(a.org), kind: val(a.kind), summary: val(a.summary), outcome: val(a.outcome), block: a.block === true ? true : val(a.block), relation: val(a.relation) }); },
+  // a caller asks the owner to call back, or wants something passed on at a time: Skyline can't dial out, so it saves a
+  // reminder and nudges the owner on Telegram at that time
+  async set_reminder(a) { return A.addReminder({ text: val(a.text), when: val(a.when), kind: 'callback', number: val(a.caller_number), name: val(a.name) }); },
   async log_outcome(a) {
     const v = visitOf(val(a.visit_id));
     if (!v) return { say: 'OK.' };
@@ -213,9 +216,12 @@ const routes = {
   'GET /api/line': () => ({
     profile: A.profile(), modes: A.MODES, labels: A.KIND_LABEL,
     people: Object.entries(A.people()).map(([number, p]) => ({ number, shown: A.showNumber(number), ...p })),
-    briefings: A.briefings(), calls: A.calls().slice(0, 30), personas: personaList(),
+    briefings: A.briefings(), calls: A.calls().slice(0, 30), reminders: A.reminders().filter((r) => !r.done).slice(0, 20), personas: personaList(),
     sample_chat: readFileSync('src/demo/sample-chat.txt', 'utf8'), web_call: env.ALLOW_CALLS === '1' && !!env.BOLNA_LINE_AGENT_ID,
   }),
+  // the owner types to Varun from the UI's Telegram box (same path as a real Telegram message)
+  'POST /api/message': (b) => { const text = String(b.text || '').trim(); if (!text) return { ok: false }; emit('telegram.in', { text }); const out = A.ownerMessage(text) || handleText(text); return { ok: true, reply: typeof out === 'string' ? out : out?.say || '' }; },
+  'POST /api/reminders/done': (b) => A.doneReminder(String(b.id || '')),
   'POST /api/line/mode': (b) => A.setMode(String(b.mode || '')),
   'POST /api/line/rule': (b) => A.setRule(String(b.kind || ''), { say: b.say, budget: b.budget }),
   'POST /api/line/passcode': (b) => A.setPasscode(b.code),
@@ -326,7 +332,7 @@ export function start(port = PORT) {
   return new Promise((ok) => server.listen(port, () => {
     emit('server.started', { port });
     // deliveries nobody answered for an hour count as delivered
-    const sweep = setInterval(closeUnanswered, 60e3); sweep.unref?.();
+    const sweep = setInterval(() => { closeUnanswered(); A.sweepReminders(); }, 30e3); sweep.unref?.();
     if (env.DRY_RUN !== '1') startTelegram();
     ok(server);
   }));
