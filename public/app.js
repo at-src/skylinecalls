@@ -32,12 +32,8 @@ async function boot() {
   useCityFor(saved0 || { lat: 12.9128, lng: 77.6374 });
   bindUi();
   bindLine();
-  $('#tgFab').onclick = () => toggleTg();
-  $('#tgClose').onclick = () => toggleTg(false);
-  $('#tryFab').onclick = () => { const p = $('#tryPop'); p.hidden = !p.hidden; $('#tryFab').classList.toggle('on', !p.hidden); };
-  $('#tryClose').onclick = () => { $('#tryPop').hidden = true; $('#tryFab').classList.remove('on'); };
-  // a demo call closes the dialer so you can watch
-  document.addEventListener('ttd-demo-start', () => { $('#tryPop').hidden = true; $('#tryFab').classList.remove('on'); });
+  bindRail();
+  renderConnectors();
   setView('mind');
   listen();
   refreshExpect();
@@ -270,14 +266,9 @@ function tg(text, from = 'bot', buttons = null) {
   f.prepend(li);
   $('#tgCount').textContent = f.children.length + (f.children.length === 1 ? ' message' : ' messages');
   // bump the unread badge on the floating button unless the popover is open
-  if ($('#tgPop').hidden) { tgUnread++; const c = $('#tgFabCount'); c.hidden = false; c.textContent = tgUnread; $('#tgFab').classList.add('ping'); setTimeout(() => $('#tgFab').classList.remove('ping'), 600); }
-}
-let tgUnread = 0;
-function toggleTg(open) {
-  const pop = $('#tgPop'), on = open ?? pop.hidden;
-  pop.hidden = !on;
-  $('#tgFab').classList.toggle('on', on);
-  if (on) { tgUnread = 0; $('#tgFabCount').hidden = true; }
+  // a new message pokes the Connectors tab if you're elsewhere
+  const rtab = document.querySelector('.rtab[data-tab="connectors"]');
+  if (rtab && !rtab.classList.contains('on')) rtab.classList.add('poke');
 }
 // once a visit is answered (here, on Telegram, or by the hour running out) its buttons stop working
 const answered = (vid) => document.querySelectorAll(`.tgbtn[data-visit="${vid}"]`).forEach((b) => (b.disabled = true));
@@ -422,7 +413,6 @@ async function startSender(id) {
   const e = $('#empty');
   if (e) { e.querySelector('h3').textContent = 'No rider needs help right now'; e.querySelector('p').textContent = `When a ${sender.name} rider can't find the door and taps Call customer, Skyline answers. The call shows up here, and on the map.`; }
   document.body.classList.add('is-sender'); setView('map');
-  $('#tgPop').querySelector('b').textContent = "Receiver's phone";
   renderSenderStats(sender.stats);
   renderOrders();
   $('#ribbon').parentElement.hidden = true;
@@ -665,11 +655,17 @@ const kchip = (k) => `<span class="kchip ${esc(k)}">${esc(KLABEL[k] || k)}</span
 const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).then((r) => r.json());
 
 function setView(v) {
-  view = v;
-  const st = document.querySelector('.stage');
-  st.classList.toggle('view-map', v === 'map'); st.classList.toggle('view-mind', v !== 'map');
+  view = v; window.__view = v;
+  const map = v === 'map';
+  // the map block takes over left + middle; the right call column stays
+  $('#mapCol').hidden = !map;
+  $('#leftCol').hidden = map; $('#midCol').hidden = map;
+  document.getElementById('grid').classList.toggle('with-map', map);
+  // the renderer sat in a 0x0 hidden container; resize it now that it's visible
+  if (map && city && city.resize) requestAnimationFrame(() => city.resize());
 }
-function showLineView() { clearTimeout(backT); $('#liveView').hidden = true; $('#lineView').hidden = false; if (!sender) setView('mind'); }
+// idle (activity) vs the live thinking view in the middle column
+function showLineView() { clearTimeout(backT); $('#liveView').hidden = true; $('#midIdle').hidden = false; if (!sender) setView('mind'); }
 
 async function loadLine() {
   try { LINE = await (await fetch('/api/line')).json(); } catch { return; }
@@ -694,14 +690,8 @@ function renderLine() {
   $('#ctBlocked').textContent = blocked;
   $('#ctPassed').textContent = passed;
   // the call log
-  const log = $('#callLog'); log.innerHTML = '';
-  if (!LINE.calls.length) log.append(el('li', 'none-note', 'No calls yet. Try one from the right.'));
-  for (const c of LINE.calls) {
-    const over = c.budget && c.seconds > c.budget;
-    const who = c.name ? `${c.name}${c.org && c.org !== c.name ? ' · ' + c.org : ''}` : c.org || showNum(c.number);
-    const learn = c.learned === 'blocked' ? '<span class="learn blocked">Blocked: next time it hangs up without talking</span>' : c.learned === 'saved' ? `<span class="learn">Saved ${esc(showNum(c.number))} as ${esc((KLABEL[c.kind] || c.kind).toLowerCase())}</span>` : '';
-    log.append(el('li', '', `<span class="w">${kchip(c.kind)}<span>${esc(who)}</span></span><span class="t${over ? ' over' : ''}">${c.seconds}s${c.budget ? ' / ' + c.budget + 's' : ''}</span><span class="s">${esc(c.summary || c.outcome)}</span>${learn}`));
-  }
+  renderActivity();
+  renderHistory();
   // briefings
   const bl = $('#briefList'); bl.innerHTML = '';
   if (!LINE.briefings.length) bl.append(el('p', 'none-note', 'No briefings. Tell it about a call you expect.'));
@@ -791,7 +781,7 @@ function onLineStart(e) {
   clearTimeout(backT);
   live = { number: e.number || '', start: Date.now(), kind: 'unknown', budget: null, ended: false };
   if (!sender) setView('mind');
-  $('#lineView').hidden = true; $('#liveView').hidden = false;
+  $('#midIdle').hidden = true; $('#liveView').hidden = false;
   $('#lcName').textContent = showNum(live.number);
   $('#lcSub').textContent = 'Looking up the number…';
   $('#lcAv').textContent = '#'; $('#lcAv').style.background = '';
@@ -879,6 +869,65 @@ setInterval(() => {
   $('#lcBar').className = f > 1 ? 'over' : f > 0.75 ? 'warn' : '';
   $('#lcTime').textContent = f > 1 ? `${s}s · ${s - live.budget}s over` : `${s}s of ${live.budget}s`;
 }, 500);
+
+// ---- icon rail: switch which pane the left column shows
+function bindRail() {
+  document.querySelectorAll('.rtab').forEach((t) => {
+    t.onclick = () => {
+      document.querySelectorAll('.rtab').forEach((x) => x.classList.remove('on'));
+      t.classList.add('on'); t.classList.remove('poke');
+      const tab = t.dataset.tab;
+      document.querySelectorAll('#leftCol .tabpane').forEach((p) => (p.hidden = p.dataset.pane !== tab));
+    };
+  });
+}
+
+// ---- connectors: Omni-style tiles. Telegram is really wired; the rest are demo connect toggles.
+const CONNECTORS = [
+  { id: 'gmail', name: 'Gmail', sub: 'Read the "out for delivery" mail', color: '#ea4335', letter: 'M' },
+  { id: 'gcal', name: 'Google Calendar', sub: 'Know when Sam is busy', color: '#4285f4', letter: '31' },
+  { id: 'whatsapp', name: 'WhatsApp', sub: 'Updates on WhatsApp too', color: '#25d366', letter: 'W' },
+  { id: 'maps', name: 'Google Maps', sub: 'Place and route lookups', color: '#34a853', letter: '◎' },
+  { id: 'contacts', name: 'Contacts', sub: 'Import who you know', color: '#9d7bff', letter: '@' },
+  { id: 'github', name: 'GitHub', sub: 'Answer dev questions', color: '#8b8b95', letter: '' },
+];
+function renderConnectors() {
+  const box = $('#conns'); if (!box) return;
+  const on = JSON.parse(localStorage.getItem('ttd-conn') || '{"maps":true}');
+  box.innerHTML = '';
+  for (const c of CONNECTORS) {
+    const yes = !!on[c.id];
+    const tile = el('div', 'conn' + (yes ? ' on' : ''), `<span class="conn-ic" style="background:${c.color}">${esc(c.letter)}</span><div class="conn-t"><b>${esc(c.name)}</b><small>${esc(c.sub)}</small></div><button class="conn-btn">${yes ? 'Connected' : 'Connect'}</button>`);
+    tile.querySelector('.conn-btn').onclick = () => { on[c.id] = !on[c.id]; localStorage.setItem('ttd-conn', JSON.stringify(on)); renderConnectors(); };
+    box.append(tile);
+  }
+}
+
+// ---- middle idle: Varun's recent activity, newest first
+const ACT_ICON = { blocked: '🚫', sales: '🚫', service: '📱', close: '💛', vip: '⭐', known: '📞', delivery: '📦', unknown: '📞' };
+function renderActivity() {
+  const box = $('#activity'); if (!box) return;
+  box.innerHTML = '';
+  if (!LINE.calls.length) { box.append(el('li', 'none-note', 'Nothing yet. Try a call from the left, under The line.')); return; }
+  for (const c of LINE.calls.slice(0, 20)) {
+    const t = new Date(c.at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+    const who = c.name || c.org || showNum(c.number);
+    box.append(el('li', '', `<span class="a-ic">${ACT_ICON[c.kind] || '📞'}</span><span class="a-t">${t}</span><span class="a-w">${esc(who)}</span><span class="a-s">${esc(c.summary || c.outcome)}</span>`));
+  }
+}
+
+// ---- history tab: full list with expandable transcript
+function renderHistory() {
+  const box = $('#histList'); if (!box) return;
+  box.innerHTML = '';
+  if (!LINE.calls.length) { box.append(el('li', 'none-note', 'No calls yet.')); return; }
+  for (const c of LINE.calls) {
+    const t = new Date(c.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    const who = c.name ? `${c.name}${c.org && c.org !== c.name ? ' · ' + c.org : ''}` : c.org || showNum(c.number);
+    const d = el('li', 'hist-row', `<div class="hist-top">${kchip(c.kind)}<b>${esc(who)}</b><span class="hist-when">${t}</span></div><p class="hist-sum">${esc(c.summary || c.outcome)}</p><div class="hist-steps">${(c.actions || []).map((a) => `<span>${esc(a)}</span>`).join('')}</div>`);
+    box.append(d);
+  }
+}
 
 function bindLine() {
 
