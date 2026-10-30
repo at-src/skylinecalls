@@ -17,3 +17,4 @@ data/
 scripts/*.jpg
 scripts/*.png
 scripts/*.log
+e2e.log
