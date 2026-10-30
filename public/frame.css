@@ -4,30 +4,34 @@
    pins, tg-feed, guard) still come from style.css.
    ============================================================================ */
 :root {
-  --teal-0: #0c2e2b; --teal-1: #103b36; --teal-2: #0a221f;
-  --glass: rgba(22, 48, 45, 0.55); --glass-2: rgba(30, 60, 56, 0.5);
-  --glass-line: rgba(140, 220, 200, 0.14); --glass-line2: rgba(140, 220, 200, 0.22);
-  --ink: #eafaf5; --ink-dim: #9fc4bc; --ink-faint: #6f938c;
-  --am: #ffb43f; --am-ink: #2a1c05; --grn: #43dc8c; --red: #ff6b61; --blu: #58b6ff; --vio: #9d7bff;
+  /* brighter, more vibrant teal like the reference */
+  --teal-0: #164a44; --teal-1: #1d5c54; --teal-2: #123a36;
+  --glass: rgba(42, 82, 76, 0.62); --glass-2: rgba(52, 96, 89, 0.55);
+  --glass-line: rgba(165, 240, 220, 0.18); --glass-line2: rgba(165, 240, 220, 0.3);
+  --ink: #f1fdf9; --ink-dim: #b4d8cf; --ink-faint: #7fa49c;
+  --am: #ffb43f; --am-ink: #2a1c05; --grn: #4fe39a; --red: #ff6b61; --blu: #58b6ff; --vio: #9d7bff;
   --rad: 18px;
 }
 html, body { height: 100%; }
-body { overflow: hidden; background: #08201d; color: var(--ink);
+body { overflow: hidden; background: #103a35; color: var(--ink);
   font-family: "Geist", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 body::before { content: none; }  /* drop the old glow */
 
-/* the animated gradient base */
+/* the vibrant gradient base */
 .shell { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; padding: 14px; gap: 12px;
   background:
-    radial-gradient(1200px 700px at 82% -10%, rgba(255,180,63,0.10), transparent 55%),
-    radial-gradient(1000px 800px at -5% 110%, rgba(67,220,140,0.12), transparent 55%),
-    linear-gradient(150deg, var(--teal-1) 0%, var(--teal-0) 45%, var(--teal-2) 100%); }
+    radial-gradient(1100px 620px at 84% -12%, rgba(255,190,90,0.16), transparent 52%),
+    radial-gradient(1000px 760px at -6% 112%, rgba(79,227,154,0.18), transparent 55%),
+    radial-gradient(900px 600px at 50% 120%, rgba(88,182,255,0.08), transparent 60%),
+    linear-gradient(145deg, #1f6159 0%, #164a44 46%, #103833 100%); }
 
 /* ---- top bar ---- */
 .bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; flex: none; }
 .bar-brand { display: flex; align-items: center; gap: 10px; }
-.bar-brand .logo { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(160deg, #ffd27f, var(--am)); box-shadow: 0 4px 14px rgba(255,180,63,0.4); position: relative; }
-.bar-brand .logo::after { content: ""; position: absolute; right: 7px; top: 11px; width: 4px; height: 4px; border-radius: 9px; background: var(--am-ink); }
+.bar-brand .logo { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+  background: linear-gradient(155deg, #2a6f66, #16423c); border: 1px solid var(--glass-line2); box-shadow: 0 4px 14px rgba(0,0,0,0.3); }
+.bar-brand .logo svg { width: 20px; height: 20px; fill: var(--am); }
+.bar-brand .logo .beacon { fill: var(--grn); }
 .bar-brand .bn { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
 .bar-brand .bn-sub { font-size: 13px; color: var(--ink-dim); font-weight: 500; }
 .bar-right { display: flex; align-items: center; gap: 10px; }
@@ -55,8 +59,10 @@ body::before { content: none; }  /* drop the old glow */
 .rtab.poke::after { content: ""; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 99px; background: var(--red); box-shadow: 0 0 0 2px var(--teal-1); }
 
 /* columns = glass cards */
-.col { min-width: 0; border-radius: var(--rad); background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(16px);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 20px 50px rgba(0,0,0,0.25); display: flex; flex-direction: column; overflow: hidden; }
+.col { min-width: 0; border-radius: var(--rad); position: relative;
+  background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0) 120px), var(--glass);
+  border: 1px solid var(--glass-line); backdrop-filter: blur(16px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 20px 50px rgba(0,0,0,0.22); display: flex; flex-direction: column; overflow: hidden; }
 .col[hidden] { display: none; }
 .col-head { padding: 18px 20px 12px; flex: none; }
 .col-head h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
@@ -92,6 +98,7 @@ body::before { content: none; }  /* drop the old glow */
 .counts .ct.ok b { color: var(--grn); } .counts .ct.stop b { color: var(--red); } .counts .ct.live b { color: var(--am); }
 .activity { list-style: none; overflow-y: auto; padding: 0 20px 20px; display: flex; flex-direction: column; gap: 2px; min-height: 0; }
 .activity li { display: grid; grid-template-columns: 24px 58px 1fr; grid-template-rows: auto auto; gap: 0 10px; padding: 11px 0; border-bottom: 1px solid var(--glass-line); align-items: center; }
+.activity li.none-note { display: block; white-space: normal; border-bottom: 0; }
 .activity .a-ic { grid-row: 1/3; font-size: 17px; } .activity .a-t { font-family: "Geist Mono", monospace; font-size: 11px; color: var(--ink-faint); }
 .activity .a-w { font-size: 14px; font-weight: 500; } .activity .a-s { grid-column: 2/4; font-size: 12.5px; color: var(--ink-dim); }
 
@@ -121,8 +128,10 @@ body::before { content: none; }  /* drop the old glow */
 .out-box { border-color: rgba(67,220,140,0.3); } .out-box .learned { margin-top: 8px; font-size: 13px; color: var(--grn); } .out-box .learned.blocked { color: #ffb1ab; }
 .know { font-size: 14px; line-height: 20px; } .know .k { color: var(--ink-faint); font-size: 12px; }
 
-/* ---- right: the call ---- */
-.col-right { background: linear-gradient(180deg, rgba(20,44,41,0.6), rgba(12,30,27,0.6)); }
+/* ---- right: the call, with a soft "sky" glow at the top like the reference ---- */
+.col-right::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 120px; pointer-events: none; z-index: 0;
+  background: radial-gradient(420px 150px at 72% -40px, rgba(255,190,90,0.28), transparent 70%), radial-gradient(360px 140px at 20% -30px, rgba(79,227,154,0.22), transparent 70%); }
+.col-right > * { position: relative; z-index: 1; }
 .call-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 20px 12px; flex: none; }
 .call-head .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-dim); }
 .call-head h2 { font-size: 18px; font-weight: 600; margin-top: 2px; }
