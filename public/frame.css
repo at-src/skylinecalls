@@ -4,14 +4,14 @@
    pins, tg-feed, guard) still come from style.css.
    ============================================================================ */
 :root {
-  /* clear blue: solid opaque cards, crisp borders, no fog */
-  --teal-0: #16233b; --teal-1: #1b2d4a; --teal-2: #121d31;
-  --glass: #18293f;        /* side/left/right columns */
-  --glass-mid: #1d3047;    /* middle column, a touch lighter so it stands out */
-  --glass-2: #243a55;      /* inner blocks, cards */
-  --glass-3: #2c4566;      /* hover / raised */
-  --glass-line: rgba(255, 255, 255, 0.09); --glass-line2: rgba(255, 255, 255, 0.16);
-  --ink: #f4f7fc; --ink-dim: #a9b8d4; --ink-faint: #74849f;
+  /* brighter blue: lifted panels so the middle/right feel as lively as the Telegram one */
+  --teal-0: #1d2f4c; --teal-1: #22395c; --teal-2: #182742;
+  --glass: #243c5e;        /* side/left/right columns */
+  --glass-mid: #2a466c;    /* middle column, lighter still */
+  --glass-2: #2f4d73;      /* inner blocks, cards */
+  --glass-3: #3a5c86;      /* hover / raised */
+  --glass-line: rgba(255, 255, 255, 0.12); --glass-line2: rgba(255, 255, 255, 0.2);
+  --ink: #f6f9ff; --ink-dim: #bccbe6; --ink-faint: #8295b5;
   --am: #ffc24d; --am-ink: #2a1c05; --grn: #5fd79a; --red: #ff7a70; --blu: #74aef0; --vio: #9d7bff;
   --rad: 16px;
 }
@@ -20,9 +20,9 @@ body { overflow: hidden; background: #0f1930; color: var(--ink);
   font-family: "Geist", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 body::before { content: none; }
 
-/* solid blue base, one faint glow top-right (no wash over the panels) */
+/* brighter blue base with a soft glow */
 .shell { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; padding: 14px; gap: 12px;
-  background: radial-gradient(900px 480px at 88% -12%, rgba(116,160,230,0.14), transparent 60%), #0f1930; }
+  background: radial-gradient(1000px 520px at 85% -14%, rgba(120,170,245,0.18), transparent 60%), radial-gradient(800px 500px at 10% 115%, rgba(90,130,210,0.12), transparent 60%), #16243e; }
 
 /* ---- top bar ---- */
 .bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; flex: none; }
@@ -59,10 +59,11 @@ body::before { content: none; }
 
 /* columns = glass cards */
 .col { min-width: 0; border-radius: var(--rad); position: relative;
-  background: var(--glass); border: 1px solid var(--glass-line);
-  box-shadow: 0 8px 30px rgba(0,0,0,0.28); display: flex; flex-direction: column; overflow: hidden; }
-/* middle column stands out with a slightly lighter solid shade */
-.col-mid { background: var(--glass-mid); box-shadow: 0 10px 34px rgba(0,0,0,0.34); }
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0) 160px), var(--glass);
+  border: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; }
+/* middle column stands out with a lighter solid shade */
+.col-mid { background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0) 160px), var(--glass-mid); box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 12px 36px rgba(0,0,0,0.34); }
 .col[hidden] { display: none; }
 .col-head { padding: 18px 20px 12px; flex: none; }
 .col-head h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
