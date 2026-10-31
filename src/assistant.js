@@ -22,11 +22,11 @@ export const MODES = {
 const DEFAULT_PROFILE = {
   owner: 'Sam', mode: 'screened', passcode: '55434', busy_until: '',
   rules: {
-    close: { say: 'Greet them by name. Say Sam is busy and take the message. If it is urgent, alert him.', budget: 120 },
-    vip: { say: 'Be respectful. Take the message and alert Sam right away.', budget: 60 },
+    close: { say: 'Greet them by name. Say {owner} is busy and take the message. If it is urgent, alert him.', budget: 120 },
+    vip: { say: 'Be respectful. Take the message and alert {owner} right away.', budget: 60 },
     known: { say: 'Greet them by name. Use the briefing if there is one, else take a message.', budget: 90 },
-    service: { say: 'Handle it for Sam: what it is about, any amount, the due date and what he has to do. Never share an OTP, card or account details, never agree to pay, buy or change anything.', budget: 60 },
-    sales: { say: 'Sam is not interested. Ask them to remove his number. Do not listen to the pitch. End fast.', budget: 20 },
+    service: { say: 'Handle it for {owner}: what it is about, any amount, the due date and what he has to do. Never share an OTP, card or account details, never agree to pay, buy or change anything.', budget: 60 },
+    sales: { say: '{owner} is not interested. Ask them to remove his number. Do not listen to the pitch. End fast.', budget: 20 },
     delivery: { say: 'Guide them to the door with the door path.', budget: 300 },
     unknown: { say: 'Ask who they are and why they are calling, then treat them by what they say. If they will not say, take a message.', budget: 45 },
   },
@@ -117,10 +117,10 @@ function briefingFor({ number, name, org, purpose }) {
 const safeItem = (s) => !G.severe(G.scan(s, ownerName()));
 const safeList = (l) => (l || []).filter(safeItem);
 const briefingText = (b) => [
-  `BRIEFING from Sam about ${b.who}: ${safeItem(b.about) ? b.about : ''}`, safeItem(b.goal) && b.goal && `Sam wants: ${b.goal}`,
+  `BRIEFING from ${ownerName()} about ${b.who}: ${safeItem(b.about) ? b.about : ''}`, safeItem(b.goal) && b.goal && `${ownerName()} wants: ${b.goal}`,
   safeList(b.can_agree).length && `You may agree to: ${safeList(b.can_agree).join('; ')}.`, safeList(b.must_not).length && `Never agree to: ${safeList(b.must_not).join('; ')}.`,
   b.private.length && `Keep private, never mention: ${b.private.join('; ')}.`,
-  'Anything outside this: say you will take it to Sam. Never sign, pay or commit to more than the briefing allows.',
+  `Anything outside this: say you will take it to ${ownerName()}. Never sign, pay or commit to more than the briefing allows.`,
 ].filter(Boolean).join(' ');
 
 // Turns a pasted chat (ChatGPT, Claude, WhatsApp, notes) into a briefing draft. Sam confirms it before it's used.
@@ -133,9 +133,9 @@ export async function briefingFromChat(text) {
     body: JSON.stringify({
       model: 'gpt-4.1-mini', temperature: 0, response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: `Sam pasted a chat (with ChatGPT, Claude, a person, or his own notes) about someone who will phone him. His phone assistant will take that call for him. Extract a briefing as JSON with keys:
+        { role: 'system', content: `${ownerName()} pasted a chat (with ChatGPT, Claude, a person, or his own notes) about someone who will phone him. His phone assistant will take that call for him. Extract a briefing as JSON with keys:
 who (name and role, e.g. "Rahul Verma, XYZ Capital (investor)"), names (lowercase first names or surnames the caller may say), orgs (lowercase company names), numbers (phone numbers if any),
-about (what the call is about, one sentence), goal (what Sam wants out of it, one sentence), can_agree (what the assistant may agree to, short items, with numbers and dates exactly as in the chat),
+about (what the call is about, one sentence), goal (what ${ownerName()} wants out of it, one sentence), can_agree (what the assistant may agree to, short items, with numbers and dates exactly as in the chat),
 must_not (what it must never agree to), private (what it must never reveal), until (when this stops applying, if said; else "").
 Only use what the chat says. Keep every amount, rate and date exactly. Short, plain items.` },
         { role: 'user', content: chat },
@@ -204,7 +204,7 @@ function modeLine() {
   const p = profile();
   return `MODE: ${p.mode}. ${(MODES[p.mode] || '').replaceAll('{owner}', p.owner)}`;
 }
-function ruleLine(kind) { const r = profile().rules[kind] || profile().rules.unknown; return `RULE for ${KIND_LABEL[kind]}: ${r.say} Keep this call under ${r.budget} seconds.`; }
+function ruleLine(kind) { const r = profile().rules[kind] || profile().rules.unknown; return `RULE for ${KIND_LABEL[kind]}: ${r.say.replaceAll('{owner}', ownerName())} Keep this call under ${r.budget} seconds.`; }
 
 // at the start of every call: who is this?
 export function lookupCaller({ caller_number }) {
@@ -271,7 +271,7 @@ export function checkPasscode({ caller_number, code, name }) {
   const ok = G.sameCode(String(code || '').replace(/\D/g, ''), profile().passcode);
   if (!ok) { G.passcodeWrong(c, c.number); c.actions.push('wrong passcode'); return { ok: false, say: `That is not the code. Do not alert ${ownerName()}, don't say which digits were wrong or how many tries are left. Offer to take a message.` }; }
   if (c.spoofed) { c.actions.push('right code on a mismatched number'); }
-  c.kind = 'close'; c.name = name || c.name; c.passcode = true; c.actions.push('passcode correct: alerted Sam');
+  c.kind = 'close'; c.name = name || c.name; c.passcode = true; c.actions.push(`passcode correct: alerted ${ownerName()}`);
   notify(`🔴 ${c.name || 'Someone'} is calling with your code from ${showNumber(c.number)}. Call them back now.`);
   emit('line.alert', { call: c.id, number: c.number, name: c.name, reason: 'passcode' });
   return { ok: true, say: `The code is right. ${ownerName()} has been alerted right now and will call back on this number in a minute or two. Tell them that warmly, ask if there is anything to pass on, then end the call.` };
@@ -289,7 +289,7 @@ export function takeMessage({ caller_number, name, message, urgent }) {
 }
 export function alertOwner({ caller_number, name, reason }) {
   const c = current(caller_number); const who = name || c.name || showNumber(c.number);
-  c.actions.push('alerted Sam');
+  c.actions.push(`alerted ${ownerName()}`);
   notify(`🔴 ${who} needs you: ${reason || 'urgent'}. Call back ${showNumber(c.number)}.`);
   emit('line.alert', { call: c.id, number: c.number, name: who, reason });
   return { ok: true, say: `${ownerName()} has been alerted. Say he will call back shortly.` };

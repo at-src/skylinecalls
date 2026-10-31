@@ -51,7 +51,7 @@ export function registry() {
     { id: 'telegram', name: 'Telegram', sub: 'Messages and alerts to you', kind: 'builtin', color: '#229ED9', letter: 'T', connected: tgOn },
     { id: 'maps', name: 'Google Maps', sub: 'Place and route lookups', kind: 'key', color: '#34a853', letter: '◎', connected: !!env.GOOGLE_MAPS_KEY },
     { id: 'gmail', name: 'Gmail', sub: 'Read the "out for delivery" mail', kind: 'oauth', scope: 'gmail', color: '#ea4335', letter: 'M', connected: !!s.gmail?.refresh_token, account: s.gmail?.email || '' },
-    { id: 'gcal', name: 'Google Calendar', sub: 'Know when Sam is busy', kind: 'oauth', scope: 'calendar', color: '#4285f4', letter: '31', connected: !!s.gcal?.refresh_token, account: s.gcal?.email || '' },
+    { id: 'gcal', name: 'Google Calendar', sub: 'Know when you are busy', kind: 'oauth', scope: 'calendar', color: '#4285f4', letter: '31', connected: !!s.gcal?.refresh_token, account: s.gcal?.email || '' },
     { id: 'whatsapp', name: 'WhatsApp', sub: 'Updates on WhatsApp too', kind: 'soon', color: '#25d366', letter: 'W', connected: false },
     { id: 'contacts', name: 'Contacts', sub: 'Import who you know', kind: 'soon', color: '#9d7bff', letter: '@', connected: false },
     { id: 'github', name: 'GitHub', sub: 'Answer dev questions', kind: 'soon', color: '#8b8b95', letter: '', connected: false },

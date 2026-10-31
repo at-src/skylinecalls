@@ -1,6 +1,8 @@
 // Skyline live screen: a night-time 3D city (three.js, built from OpenStreetMap) + the live call.
 // Everything on the map is driven by server events: where the agent believes the rider is, the door path, the home.
 import * as THREE from 'three';
+// the owner's first name, from the saved profile (/api/line); the placeholder until it loads
+let OWNER = 'Sam';
 import { City } from './city3d.js';
 import { SlopCity, prebuiltFor } from './slop-city.js';
 
@@ -236,8 +238,8 @@ function startCall(caller) {
   callStart = Date.now(); clearInterval(timerId);
   timerId = setInterval(() => { const s = Math.floor((Date.now() - callStart) / 1000); $('#timer').textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }, 500);
   callActive = true; lockDock(true);
-  tag('Live', 'live'); status(callKind === 'calibration' ? 'Sam is teaching the door' : 'On a call', true);
-  sys('Call connected · answering for Sam');
+  tag('Live', 'live'); status(callKind === 'calibration' ? `${OWNER} is teaching the door` : 'On a call', true);
+  sys(`Call connected · answering for ${OWNER}`);
 }
 function endCall() {
   callActive = false; lockDock(false);
@@ -246,7 +248,7 @@ function endCall() {
 }
 function line(role, text) {
   clearEmpty();
-  const by = role === 'rider' || role === 'caller' ? (live?.kind === 'delivery' ? 'Rider' : $('#callerName').textContent || 'Caller') : role === 'customer' ? 'Sam' : 'Varun';
+  const by = role === 'rider' || role === 'caller' ? (live?.kind === 'delivery' ? 'Rider' : $('#callerName').textContent || 'Caller') : role === 'customer' ? `${OWNER}` : 'Varun';
   // callers share the rider's bubble (".caller" is the call card's class)
   const m = el('div', 'msg ' + (role === 'caller' ? 'rider' : role), `<span class="by">${esc(by)}</span><div class="b">${esc(text)}</div>`);
   $('#stream').append(m); scroll();
@@ -289,14 +291,14 @@ function reasonFor(tool, out, args) {
     if (out.kind === 'delivery') return out.verified ? [`<b>Delivery</b> · expected ${esc(cap(out.service))} order, guiding`, 'ok'] : ['<b>Delivery, not expected</b> · giving nothing away', 'bad'];
     return [`<b>${esc(out.label || out.kind)}</b>${out.budget ? ` · ${out.budget}s limit` : ''}${out.briefing ? ' · using a briefing' : ''}`, out.kind === 'sales' ? 'bad' : 'ok'];
   }
-  if (tool === 'check_passcode') return out.ok ? ['<b>Code correct</b> · Sam alerted', 'ok'] : ['<b>Wrong code</b>', 'bad'];
-  if (tool === 'take_message') return ['<b>Message sent to Sam</b>', 'ok'];
-  if (tool === 'alert_owner') return ['<b>Alerted Sam</b>', 'bad'];
-  if (tool === 'end_call') return ['<b>Logged</b> · Sam told what happened', 'ok'];
+  if (tool === 'check_passcode') return out.ok ? [`<b>Code correct</b> · ${OWNER} alerted`, 'ok'] : ['<b>Wrong code</b>', 'bad'];
+  if (tool === 'take_message') return [`<b>Message sent to ${OWNER}</b>`, 'ok'];
+  if (tool === 'alert_owner') return [`<b>Alerted ${OWNER}</b>`, 'bad'];
+  if (tool === 'end_call') return [`<b>Logged</b> · ${OWNER} told what happened`, 'ok'];
   if (tool === 'verify_caller') return out.verified ? [`<b>Caller checked</b> · expected ${esc(cap(out.service))} order`, 'ok'] : ['<b>Not expected</b> · giving nothing away', 'bad'];
-  if (tool === 'ask_customer') return ['<b>Asking Sam</b> · Allow or Block sent to Telegram', 'bad'];
-  if (tool === 'check_approval') return out.approved ? ['<b>Sam allowed</b> · guiding now', 'ok'] : ['<b>Not approved</b> · ending politely', 'bad'];
-  if (tool === 'call_customer') return ['<b>Ringing Sam</b> · fallback ready: shoe rack + photo', ''];
+  if (tool === 'ask_customer') return [`<b>Asking ${OWNER}</b> · Allow or Block sent to Telegram`, 'bad'];
+  if (tool === 'check_approval') return out.approved ? [`<b>${OWNER} allowed</b> · guiding now`, 'ok'] : ['<b>Not approved</b> · ending politely', 'bad'];
+  if (tool === 'call_customer') return [`<b>Ringing ${OWNER}</b> · fallback ready: shoe rack + photo`, ''];
   if (tool === 'log_outcome') return [`<b>Delivered</b> · ${esc(args?.result || '')}`, 'ok'];
   if (tool === 'save_anchor') return [`<b>Landmark found on the map</b> · ${esc(args?.name || '')}`, 'ok'];
   if (tool === 'save_step') { const n = say.match(/Step (\d+) saved/); return [`<b>Step ${n ? n[1] : ''} saved</b> · ends at ${esc(args?.landmark || '')}`, 'ok']; }
@@ -360,7 +362,7 @@ function beginTeaching() {
   pins.filter((p) => p.kind === 'stop').forEach((p) => p.node.remove());
   pins = pins.filter((p) => p.kind !== 'stop');
   const r = $('#ribbon'); r.innerHTML = '';
-  r.append(el('div', 'stop now', '<span class="num">…</span><span class="lbl">Learning the way from Sam</span>'));
+  r.append(el('div', 'stop now', `<span class="num">…</span><span class="lbl">Learning the way from ${OWNER}</span>`));
   status('Learning the door path', true); tag('Teaching', 'live');
 }
 async function taughtStop(s) {
@@ -494,11 +496,11 @@ async function renderConsent() {
   }
 }
 // ======================= guard =======================
-function showGuard(id, caller) { pendingApproval = id; $('#guardSays').textContent = `"${caller}"`; $('#guard').hidden = false; tag('Checking', 'stop'); status('Unknown caller · asking Sam', true); }
+function showGuard(id, caller) { pendingApproval = id; $('#guardSays').textContent = `"${caller}"`; $('#guard').hidden = false; tag('Checking', 'stop'); status(`Unknown caller · asking ${OWNER}`, true); }
 function hideGuard(st) {
   $('#guard').hidden = true; pendingApproval = null;
-  if (st === 'blocked') { think('<b>Blocked by Sam</b> · no address shared', 'bad'); tag('Blocked', 'stop'); }
-  if (st === 'allowed') { think('<b>Allowed by Sam</b>', 'ok'); tag('Live', 'live'); }
+  if (st === 'blocked') { think(`<b>Blocked by ${OWNER}</b> · no address shared`, 'bad'); tag('Blocked', 'stop'); }
+  if (st === 'allowed') { think(`<b>Allowed by ${OWNER}</b>`, 'ok'); tag('Live', 'live'); }
 }
 async function resolve(st) { if (!pendingApproval) return; await fetch('/api/approvals/resolve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approval_id: pendingApproval, status: st }) }); }
 
@@ -516,7 +518,7 @@ function handle(e) {
   switch (e.type) {
     case 'visit.created': setExpecting(true); status(`${cap(e.service)} on the way`, true); refreshExpect(); if (e.source === 'telegram') tg(`Expecting ${cap(e.service)}`, 'sam'); break;
     case 'visit.eta': setExpecting(true); status(`${cap(e.service || 'Delivery')} · about ${e.eta_min} min away`, true); break;
-    case 'visit.awaiting': setExpecting(false); refreshExpect(); status('Rider says delivered · waiting for Sam', true); tag('Confirming', 'live'); break;
+    case 'visit.awaiting': setExpecting(false); refreshExpect(); status(`Rider says delivered · waiting for ${OWNER}`, true); tag('Confirming', 'live'); break;
     case 'visit.closed': setExpecting(false); refreshExpect(); answered(e.visit); if (e.status === 'not_received') { status('Not received · flagged', false); tag('Not received', 'stop'); } if (e.status === 'delivered') { status('Delivered', false, true); tag('Delivered', 'done'); riderStep = $('#ribbon').children.length - 1; markRibbon(); if (home) setTimeout(() => city.look(city.home.clone(), 260, 0.9, null, 2.6), 900); } break;
     case 'call.started':
       callKind = e.kind || 'guide'; clearCallouts(); city.clearHighlights?.();
@@ -525,7 +527,7 @@ function handle(e) {
       if (callKind === 'calibration') { setView('map'); beginTeaching(); }
       break;
     case 'call.line': line(e.role, e.text); if (e.audio) playLine(e.audio); break;
-    case 'call.ended': endCall(); if (live && live.kind !== 'delivery' && !sender) { status('Answering for Sam', false, true); tag('Done', 'done'); clearTimeout(backT); backT = setTimeout(() => { if (!callActive) showLineView(); }, 9000); } break;
+    case 'call.ended': endCall(); if (live && live.kind !== 'delivery' && !sender) { status(`Answering for ${OWNER}`, false, true); tag('Done', 'done'); clearTimeout(backT); backT = setTimeout(() => { if (!callActive) showLineView(); }, 9000); } break;
     case 'tool.call': lastNext = { tool: e.tool, args: e.args }; break;
     case 'tool.result': {
       const args = e.args || (lastNext?.tool === e.tool ? lastNext.args : null);
@@ -623,7 +625,7 @@ function bindUi() {
   $('#block').onclick = () => resolve('blocked');
   $('#teachDemo').onclick = async () => {
     lockDock(true);
-    if (!home) await setHome({ lat: lastStep().lat, lng: lastStep().lng, label: "Sam's home" });
+    if (!home) await setHome({ lat: lastStep().lat, lng: lastStep().lng, label: `${OWNER}'s home` });
     setView('map');
     await fetch('/api/demo/teach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   };
@@ -635,7 +637,7 @@ function bindUi() {
       { enableHighAccuracy: true, timeout: 12000 },
     );
   };
-  $('#useDemo').onclick = () => setHome({ lat: lastStep().lat, lng: lastStep().lng, label: "Sam's home" });
+  $('#useDemo').onclick = () => setHome({ lat: lastStep().lat, lng: lastStep().lng, label: `${OWNER}'s home` });
   let t;
   $('#q').oninput = (ev) => {
     clearTimeout(t); const q = ev.target.value.trim();
@@ -680,6 +682,11 @@ function showLineView() { clearTimeout(backT); $('#liveView').hidden = true; $('
 
 async function loadLine() {
   try { LINE = await (await fetch('/api/line')).json(); } catch { return; }
+  if (LINE?.profile?.owner) {
+    OWNER = LINE.profile.owner;
+    for (const id of ['midTitle', 'household']) { const h = document.getElementById(id); if (h && / line$/.test(h.textContent)) h.textContent = `${OWNER}'s line`; }
+    const g = document.querySelector('.guard-note'); if (g) g.textContent = `Nothing has been shared. ${OWNER} was asked on Telegram.`;
+  }
   renderLine(); renderDock();
 }
 let lineT = null;
@@ -731,7 +738,7 @@ function renderLine() {
   const rl = $('#rules'); rl.innerHTML = '';
   for (const k of ['close', 'vip', 'known', 'service', 'sales', 'delivery', 'unknown']) {
     const r = P.rules[k]; if (!r) continue;
-    const row = el('div', 'rule', `<label>${kchip(k)}</label><textarea rows="2" aria-label="Rule for ${esc(KLABEL[k])}">${esc(r.say)}</textarea><input type="number" min="5" max="600" value="${r.budget}" aria-label="Seconds for ${esc(KLABEL[k])}" title="Time limit, seconds" />`);
+    const row = el('div', 'rule', `<label>${kchip(k)}</label><textarea rows="2" aria-label="Rule for ${esc(KLABEL[k])}">${esc(r.say.replaceAll('{owner}', OWNER))}</textarea><input type="number" min="5" max="600" value="${r.budget}" aria-label="Seconds for ${esc(KLABEL[k])}" title="Time limit, seconds" />`);
     const [ta, inp] = [row.querySelector('textarea'), row.querySelector('input')];
     ta.onchange = () => post('/api/line/rule', { kind: k, say: ta.value });
     inp.onchange = () => post('/api/line/rule', { kind: k, budget: Number(inp.value) });
@@ -746,7 +753,7 @@ function briefNode(b) {
 // ---- the try-it dock: call the line as one of these people, or talk to it yourself
 function renderDock() {
   const box = $('#personas'); box.innerHTML = '';
-  const list = [...(LINE.personas || []), { id: 'delivery', label: 'Zepto rider', sub: 'Delivery Sam expects' }];
+  const list = [...(LINE.personas || []), { id: 'delivery', label: 'Zepto rider', sub: `Delivery ${OWNER} expects` }];
   for (const p of list) {
     const b = el('button', 'persona', `<b>${esc(p.label)}</b><small>${esc(p.sub)}</small>`);
     b.onclick = () => demoCall(p.id);
@@ -764,7 +771,7 @@ async function demoCall(id) {
   lockDock(true);
   document.dispatchEvent(new Event('ttd-demo-start'));
   if (id === 'delivery') {
-    if (!taught) await setHome({ lat: lastStep().lat, lng: lastStep().lng, label: "Sam's home" });
+    if (!taught) await setHome({ lat: lastStep().lat, lng: lastStep().lng, label: `${OWNER}'s home` });
     await post('/api/demo/replay', {});
   } else await post('/api/demo/call', { persona: id });
 }
@@ -787,7 +794,7 @@ async function toggleTalk() {
       return r;
     },
   });
-  webCall.on('call-start', () => { btn.disabled = false; btn.classList.add('on'); btn.querySelector('span').textContent = 'Hang up'; hint.textContent = 'You are on Sam\'s line. Say who you are and why you called.'; });
+  webCall.on('call-start', () => { btn.disabled = false; btn.classList.add('on'); btn.querySelector('span').textContent = 'Hang up'; hint.textContent = `You are on ${OWNER}'s line. Say who you are and why you called.`; });
   webCall.on('call-end', () => { webCall = null; btn.disabled = false; btn.classList.remove('on'); btn.querySelector('span').textContent = 'Talk to it'; hint.textContent = ''; });
   webCall.on('error', (e) => { hint.textContent = e.code === 'microphone_denied' ? 'Microphone blocked. Allow it in the browser and try again.' : e.code === 'at_capacity' ? 'The line is busy. Try again shortly.' : `Couldn't connect: ${e.message || e.code}`; });
   try { await webCall.start(); } catch (e) { hint.textContent = `Couldn't connect: ${e.message}`; webCall = null; btn.disabled = false; }
@@ -817,7 +824,7 @@ function setLiveKind(k, sorting = false) {
 function liveStep(html, cls = '') { const s = el('li', cls, html); $('#lcSteps').append(s); }
 function liveRule(kind, budget) {
   const r = LINE?.profile?.rules?.[kind];
-  if (r) $('#lcRule').textContent = r.say;
+  if (r) $('#lcRule').textContent = r.say.replaceAll('{owner}', OWNER);
   live.budget = budget || r?.budget || null;
 }
 function liveWho(name, sub) {
@@ -834,14 +841,14 @@ function onLineTool(tool, out, args) {
       liveStep('<b>Blocked number</b> · hanging up without talking', 'bad');
     } else if (out.known) {
       setLiveKind(out.kind); liveWho(out.name, `${showNum(live.number)} · ${out.relation || KLABEL[out.kind]}`);
-      $('#lcKnow').innerHTML = `<div class="know">${esc(out.name)}, Sam's ${esc(out.relation || KLABEL[out.kind].toLowerCase())}<div class="k">${out.calls ? `Called ${out.calls} time${out.calls > 1 ? 's' : ''} before${out.last_summary ? ': ' + esc(out.last_summary) : ''}` : 'In Sam\'s contacts'}</div></div>`;
+      $('#lcKnow').innerHTML = `<div class="know">${esc(out.name)}, ${OWNER}'s ${esc(out.relation || KLABEL[out.kind].toLowerCase())}<div class="k">${out.calls ? `Called ${out.calls} time${out.calls > 1 ? 's' : ''} before${out.last_summary ? ': ' + esc(out.last_summary) : ''}` : 'In ${OWNER}\'s contacts'}</div></div>`;
       liveRule(out.kind, out.budget);
       liveStep(`<b>Knows this number</b> · ${esc(out.name)}, ${esc(KLABEL[out.kind].toLowerCase())} · greeting by name, not asking who`, 'ok');
       if (out.briefing) showBrief(out.briefing);
     } else {
       $('#lcSub').textContent = `${showNum(live.number)} · first call`;
-      $('#lcKnow').innerHTML = '<p class="none-note">Not in Sam\'s contacts. Never called before.</p>';
-      liveStep('<b>Unknown number</b> · asking who it is and why, not saying Sam is away yet');
+      $('#lcKnow').innerHTML = `<p class="none-note">Not in ${OWNER}'s contacts. Never called before.</p>`;
+      liveStep(`<b>Unknown number</b> · asking who it is and why, not saying ${OWNER} is away yet`);
     }
     liveStep(`Mode: <b>${esc({ available: 'Available', screened: 'Screened', unavailable: 'Unavailable' }[out.mode] || out.mode || '')}</b>`);
   } else if (tool === 'classify_caller') {
@@ -854,13 +861,13 @@ function onLineTool(tool, out, args) {
     if (out.kind !== 'delivery') status(`${who} — ${KLABEL[out.kind].toLowerCase()}${out.kind === 'sales' ? ', declining' : out.briefing ? ', on your briefing' : ''}`, true);
     if (out.briefing) showBrief(out.briefing);
     if (out.kind === 'delivery') {
-      liveStep(out.verified ? `<b>Expected ${esc(cap(out.service))} order</b> · opening the door map` : '<b>Not expected</b> · asking Sam before giving anything away', out.verified ? 'ok' : 'bad');
+      liveStep(out.verified ? `<b>Expected ${esc(cap(out.service))} order</b> · opening the door map` : `<b>Not expected</b> · asking ${OWNER} before giving anything away`, out.verified ? 'ok' : 'bad');
       if (out.verified) setTimeout(() => setView('map'), 900);
     }
-  } else if (tool === 'check_passcode') liveStep(out.ok ? '<b>Code correct</b> · Sam alerted to call back now' : '<b>Wrong code</b> · not alerting Sam', out.ok ? 'ok' : 'bad');
-  else if (tool === 'take_message') liveStep(`<b>Message to Sam</b> · ${esc(args?.message || '')}`, 'ok');
-  else if (tool === 'alert_owner') liveStep(`<b>Alerted Sam</b> · ${esc(args?.reason || '')}`, 'bad');
-  else if (tool === 'end_call') liveStep('<b>Logged</b> · telling Sam what happened', 'ok');
+  } else if (tool === 'check_passcode') liveStep(out.ok ? `<b>Code correct</b> · ${OWNER} alerted to call back now` : `<b>Wrong code</b> · not alerting ${OWNER}`, out.ok ? 'ok' : 'bad');
+  else if (tool === 'take_message') liveStep(`<b>Message to ${OWNER}</b> · ${esc(args?.message || '')}`, 'ok');
+  else if (tool === 'alert_owner') liveStep(`<b>Alerted ${OWNER}</b> · ${esc(args?.reason || '')}`, 'bad');
+  else if (tool === 'end_call') liveStep(`<b>Logged</b> · telling ${OWNER} what happened`, 'ok');
 }
 function showBrief(b) {
   $('#lcBriefBox').hidden = false;
