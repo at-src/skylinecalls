@@ -175,8 +175,10 @@ function current(number) {
 // Scan what the caller said (tool arguments the model filled from speech, or live transcript lines). New threats are
 // added to the call; the first severe one alerts the owner once. Returns the warning to prepend to the tool's note.
 export function screen(number, texts) {
-  const c = current(number);
   const found = G.scan((Array.isArray(texts) ? texts : [texts]).filter(Boolean).join(' \n '), ownerName());
+  // nothing found and no call open: don't open one (a repeated end_call must still look like a repeat)
+  if (!found.length && !live.has(normNumber(number) || 'unknown')) return { flags: [], warn: '' };
+  const c = current(number);
   const fresh = found.filter((f) => !c.flags.some((x) => x.id === f.id));
   if (fresh.length) {
     c.flags.push(...fresh);
