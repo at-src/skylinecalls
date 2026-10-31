@@ -229,6 +229,14 @@ for (const [label, said] of normal) {
 }
 
 {
+  // a call left open (caller hung up first) is closed by the server, and a later end_call doesn't double it
+  const O = '+919000000097';
+  await tool('lookup_caller', { caller_number: O });
+  check('an open call is visible to the server', !!A.peek(O));
+  A.endCall({ caller_number: O, summary: 'Hung up before I wrapped up', outcome: 'caller hung up' });
+  check('...and closing it from the server works', !A.peek(O));
+}
+{
   const D = '+919000000098';
   await tool('lookup_caller', { caller_number: D });
   await tool('classify_caller', { caller_number: D, purpose: 'LIC term plan', guess: 'sales' });

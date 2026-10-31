@@ -381,6 +381,12 @@ function followCall(visit, execution, userRole = 'rider', number = '') {
       }
       if (['completed', 'failed', 'no-answer', 'busy', 'canceled', 'error'].includes(e.status) || ++tries > 300) {
         clearInterval(timer); emit('call.ended', { visit, status: e.status });
+        // the caller (or Bolna's goodbye hangup) ended it before Varun logged it: log it from the transcript, so the
+        // owner still gets the one-line summary and the call shows up in the history
+        if (number && A.peek(number)) {
+          const said = lines.filter((l) => /^user\s*:/i.test(l)).map((l) => l.replace(/^user\s*:\s*/i, '')).join(' ');
+          A.endCall({ caller_number: number, summary: said ? `Hung up before I wrapped up. They said: "${G.cap(said, 180)}"` : 'Hung up without saying anything', outcome: 'caller hung up' });
+        }
       }
     } catch {}
   }, 1500);

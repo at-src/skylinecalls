@@ -55,6 +55,17 @@ const CALIB_DEFS = [
 ];
 // Varun's line: every call. The delivery tools (minus verify_caller, which classify_caller runs) come along.
 // The line tools live in src/line-tools.js so the red-team eval tests exactly what's deployed.
+// when Bolna may end the call: only on a real goodbye, never on a mid-call "ok" or "theek hai"
+const HANGUP_PROMPT = `A conversation is considered complete if ANY of these is true:
+1. The assistant has already said a closing line (for example "alvida", "bye", "phir milte hain", "Namaste" to end, "Dhanyavaad, alvida"), and the user's reply after it is a goodbye or a short acknowledgement: "bye", "ok bye", "goodbye", "alvida", "theek hai", "ok", "okay", "thank you", "thanks", "dhanyavaad", "shukriya", "chalo", or similar.
+2. The assistant has confirmed it will pass the message on, or asked whether there is anything else ("Kuch aur batana hai?", "Anything else?"), and the user replies with only an acknowledgement or a no: "ok", "okay", "theek hai", "nahi", "bas", "bas itna hi", "nothing", "no", "bye", or similar.
+3. The user clearly ends the call themselves: "bye", "goodbye", "ok bye", "chalo bye", "bas itna hi", "rakhta hoon", "phone rakhta hoon", "baad mein baat karte hain", or similar.
+The conversation is NOT complete if:
+- the assistant has not yet said a closing line and the user only says "haan", "ok", "theek hai", "achha" in the middle of the conversation;
+- the user is still explaining, asking something, giving a message, a time, an amount or a code;
+- the user says something new after the assistant's goodbye (anything more than a goodbye or acknowledgement).
+The last message in the transcript must be from the user.`;
+
 // what Varun says while a tool runs (otherwise Bolna fills the pause with an English "Just give me a moment…")
 const PRE = { lookup_caller: 'Haan ji', classify_caller: 'Achha', check_passcode: 'Ek second', take_message: 'Haan, likh raha hoon', alert_owner: 'Ek minute', set_reminder: 'Haan, note kar liya', end_call: 'Theek hai', verify_caller: 'Haan ji, bolo', ask_customer: 'Haan, ruko ek second', check_approval: 'Haan ek second', next_instruction: 'Haan', rider_status: 'Ek second', call_customer: 'Ruko, bulata hoon', log_outcome: 'Theek hai', check_calendar: 'Ek second, dekhta hoon', check_mail: 'Ek second, check karta hoon' };
 
@@ -83,8 +94,10 @@ const agentBody = ({ name, welcome, prompt, tools, terminate = 600 }) => ({
         hangup_after_silence: 15, call_terminate: terminate, optimize_latency: true, number_of_words_for_interruption: 2, incremental_delay: 400, backchanneling: false, use_fillers: false,
         // in Hinglish, like the rest of the call (Bolna's default is an English "Hey, are you still there")
         check_if_user_online: true, check_user_online_message: 'Hello? Aap line pe hain?', trigger_user_online_message_after: 10,
-        // the call ends on silence after the goodbye; Bolna's prompt-based hangup is left off until it's tested
-        hangup_after_LLMCall: false, call_cancellation_prompt: null,
+        // hang up on a real goodbye (Bolna checks this prompt after the caller speaks). Mid-call "haan"/"theek hai" must
+        // not end it, and if the caller cuts into the goodbye with something new, the hangup is cancelled.
+        hangup_after_LLMCall: true, interruptible_hangup_message: true, call_cancellation_prompt: HANGUP_PROMPT,
+        call_hangup_message: 'Theek hai ji, alvida!',
       },
       tools_config: {
         input: { format: 'wav', provider: 'plivo' },
