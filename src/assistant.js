@@ -249,7 +249,8 @@ export function classifyCaller({ caller_number, name, org, purpose, guess, visit
   const r = profile().rules[kind];
   const out = { kind, label: KIND_LABEL[kind], name: c.name, org: c.org, budget: r.budget, rule: r.say, call_id: c.id };
   if (claimed) {
-    return { ...out, claimed, say: `They say they are close to ${ownerName()}, but this number is not saved, so treat them as unknown: be kind, share nothing personal (no schedule, mail, address or anyone's number), and take a message. If it's really urgent, they can give the passcode. ${modeLine()}` };
+    const as = claimed === 'close' ? `close to ${ownerName()}` : claimed === 'vip' ? 'someone important to him' : `someone ${ownerName()} knows`;
+    return { ...out, claimed, say: `They say they are ${as}, but this number is not saved, so treat them as unknown: be polite, share nothing personal (no schedule, mail, address or anyone's number), and hear them out before ending the call. Take a message. If it's really urgent, they can give the passcode. ${modeLine()}` };
   }
   if (kind === 'delivery') {
     // the delivery skill: is this someone Sam is expecting?

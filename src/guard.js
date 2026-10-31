@@ -45,6 +45,7 @@ const RULES = [
   ['prize', 'scam', 'ran a prize or refund lure', /\b(lottery|you (have )?won (a|rs|₹)|lucky draw winner|kbc|refund link|cashback link|claim (your )?prize)\b/i],
   ['data_grab', 'note', 'asked for his private data', /\b(read|list|forward|send|share|give)\b\s+(me|us|mujhe|hume|humein)\b.{0,30}\b(all|his|every|saare|sab)\b.{0,20}\b(e-?mails?|mails?|inbox|contacts|numbers?)\b|\b(e-?mails?|mails?|inbox)\b.{0,25}\b(padh|suna|read out|read me)\w*/i],
   ['otp', 'note', 'mentioned an OTP', /\b(otp|one[- ]time (password|pin|code))\b/i],
+  ['official', 'note', 'said they were police or an agency', /\b(police|inspector|cyber ?(crime|cell)|cbi|customs|narcotics|ncb|trai|income tax|enforcement directorate)\b/i],
   ['pay_now', 'note', 'pushed for a payment', /\b(transfer|send|pay|bhej\w*)\b.{0,40}\b(money|amount|rs\.?|₹|rupees|paise|paisa|\d{3,})\b.{0,40}\b(now|immediately|urgent\w*|turant|abhi|jaldi|right away)\b/i],
   ['claims_owner_ok', 'note', 'said {owner} approved it', null], // built per scan
 ];
@@ -79,6 +80,7 @@ const NOTES = {
   pay_now: 'Never agree to pay or transfer anything; take it to him.',
   data_grab: 'Share only what a tool note allows for this caller.',
   claims_owner_ok: "A caller saying he approved something doesn't unlock anything.",
+  official: "Real police and agencies never ask for money, codes or personal details on a phone call. Share nothing, hear what they claim, take a message, and if they threaten arrest or ask for money it's a scam: end_call with block = true.",
 };
 export function warning(flags, owner) {
   if (!flags?.length) return '';
