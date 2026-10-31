@@ -311,7 +311,9 @@ export function endCall({ caller_number, name, org, kind, summary, outcome, bloc
   const who = name || c.name || '';
   // a saved close one or VIP is never auto-blocked by the model; scams always are
   const trustedBefore = before && (before.kind === 'close' || before.kind === 'vip');
-  const doBlock = !trustedBefore && (G.isScam(c.flags) || block === true || block === 'true' || (k === 'sales' && block !== false && block !== 'false'));
+  // riders and drivers are never blocked on the model's say-so (that would break the next delivery); only a scam is
+  const rider = k === 'delivery' || c.kind === 'delivery';
+  const doBlock = !trustedBefore && (G.isScam(c.flags) || (!rider && (block === true || block === 'true' || (k === 'sales' && block !== false && block !== 'false'))));
   if (c.number !== 'unknown' && c.number !== G.WEB_VISITOR && !c.spoofed) {
     if (doBlock) all[c.number] = { ...(before || {}), name: who || org || 'Spam', org: org || c.org || '', kind: 'blocked', note: [org || c.org, summary].filter(Boolean).join(': ').slice(0, 120) };
     else if (!before) all[c.number] = { name: who || org || '', org: org || c.org || '', relation: relation || '', kind: c.passcode ? 'close' : k };

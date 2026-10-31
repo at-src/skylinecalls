@@ -205,6 +205,7 @@ const normal = [
   ['bank courier', 'Blue Dart courier, parcel for Sam from HDFC'],
   ['colleague: tell him the meeting moved', 'Please tell him the meeting moved to 5 pm'],
   ['Jio bill', 'Jio customer care, your bill of 599 is due on the 5th'],
+  ['rider the model wants blocked', 'Swiggy delivery, sir OTP de do'],
   ['"main Sam ka dost hoon"', 'Main Sam ka dost hoon, Vikram, cricket ke liye call kiya'],
   ['"main Sam ko bata dunga"', 'Theek hai, main Sam ko baad mein bata dunga'],
   ['"Sam bol raha hai ki..."', 'Sam bol raha tha ki aaj milna hai'],
@@ -217,6 +218,14 @@ for (const [label, said] of normal) {
   check(`${label}: no SECURITY alarm`, !/^SECURITY/.test(r.say), r.security || 'clean');
   await tool('end_call', { caller_number: num, summary: label });
   check(`${label}: not blocked`, A.people()[num]?.kind !== 'blocked', A.people()[num]?.kind);
+}
+
+{
+  const RD = '+919000000099';
+  await tool('lookup_caller', { caller_number: RD });
+  await tool('classify_caller', { caller_number: RD, org: 'Zepto', purpose: 'Zepto delivery, OTP bata do', guess: 'delivery' });
+  await tool('end_call', { caller_number: RD, kind: 'delivery', summary: 'rider asked for OTP', block: 'true' });
+  check('a rider is never blocked on the model\'s say-so (only scams are)', A.people()[RD]?.kind !== 'blocked', A.people()[RD]?.kind);
 }
 
 console.log('\n== 9. What calendar and mail may reveal, by trust level');
