@@ -397,7 +397,7 @@ function followCall(visit, execution, userRole = 'rider', number = '') {
         if (m && m[2]) {
           emit('call.line', { visit, role: m[1].toLowerCase() === 'user' ? userRole : 'agent', text: m[2] });
           // every word the caller says on Varun's line is scanned too, not just what reaches a tool
-          if (number && m[1].toLowerCase() === 'user') A.screen(number, G.cap(m[2], 500));
+          if (number && m[1].toLowerCase() === 'user') A.screen(number, G.cap(m[2], 500), false);
         }
       }
       if (['completed', 'failed', 'no-answer', 'busy', 'canceled', 'error'].includes(e.status) || ++tries > 300) {

@@ -63,9 +63,56 @@ const ownerIs = (o) => new RegExp([
 ].join('|'), 'i');
 const ownerOk = (o) => new RegExp(`\\b(${o}|owner|boss)\\b.{0,30}\\b(told|asked|authori[sz]ed|allowed|approved|permitted|said|bola|kaha|ne bola)\\b`, 'i');
 
+// ---------- Devanagari -> Latin ----------
+// Speech-to-text writes Hindi in Devanagari ("आपका केवाईसी एक्सपायर हो गया, ओटीपी बता दीजिए"), which the rules above
+// can't read. English loanwords are mapped back to their spelling; the rest is transliterated the way people type
+// Hinglish ("main sam bol raha hoon", "rules bhool jao"), so the same rules catch both scripts.
+const LOAN = {
+  'केवाईसी': 'kyc', 'के वाई सी': 'kyc', 'ओटीपी': 'otp', 'ओ टी पी': 'otp', 'अकाउंट': 'account', 'अकॉउंट': 'account', 'एकाउंट': 'account', 'ब्लॉक': 'block', 'ब्लाक': 'block',
+  'एक्सपायर': 'expire', 'अपडेट': 'update', 'बैंक': 'bank', 'पुलिस': 'police', 'साइबर': 'cyber', 'क्राइम': 'crime', 'सेल': 'cell', 'कस्टम्स': 'customs', 'कस्टम': 'customs',
+  'पार्सल': 'parcel', 'ड्रग्स': 'drugs', 'अरेस्ट': 'arrest', 'डिजिटल': 'digital', 'वारंट': 'warrant', 'गिफ्ट': 'gift', 'कार्ड': 'card', 'कार्ड्स': 'cards', 'एनीडेस्क': 'anydesk', 'ऐनीडेस्क': 'anydesk',
+  'टीमव्यूअर': 'teamviewer', 'यूपीआई': 'upi', 'पिन': 'pin', 'सीवीवी': 'cvv', 'लॉटरी': 'lottery', 'रिफंड': 'refund', 'लिंक': 'link', 'ट्रांसफर': 'transfer', 'पासकोड': 'passcode',
+  'पासवर्ड': 'password', 'कोड': 'code', 'इग्नोर': 'ignore', 'इंस्ट्रक्शन्स': 'instructions', 'इंस्ट्रक्शंस': 'instructions', 'इंस्ट्रक्शन': 'instructions', 'रूल्स': 'rules', 'रूल': 'rule',
+  'प्रॉम्प्ट': 'prompt', 'सिस्टम': 'system', 'मोड': 'mode', 'टेस्ट': 'test', 'डेवलपर': 'developer', 'ओनर': 'owner', 'अप्रूव': 'approve', 'अप्रूवड': 'approved', 'ऑथराइज़': 'authorised',
+  'ईमेल': 'email', 'मेल': 'mail', 'इनबॉक्स': 'inbox', 'कैलेंडर': 'calendar', 'शेड्यूल': 'schedule', 'अमाउंट': 'amount', 'सर': 'sir', 'एसबीआई': 'sbi', 'एचडीएफसी': 'hdfc',
+  'आईसीआईसीआई': 'icici', 'फेडएक्स': 'fedex', 'कूरियर': 'courier', 'वेरिफिकेशन': 'verification', 'पेटीएम': 'paytm', 'फोनपे': 'phonepe', 'वॉलेट': 'wallet', 'लोन': 'loan',
+  'सस्पेंड': 'suspend', 'फ्रीज़': 'freeze', 'फ्रीज': 'freeze', 'सीबीआई': 'cbi', 'इंस्पेक्टर': 'inspector', 'ट्राई': 'trai', 'सैम': 'sam',
+};
+const LOAN_RE = new RegExp('(?<![\\u0900-\\u097F])(' + Object.keys(LOAN).sort((a, b) => b.length - a.length).map((w) => w.replace(/ /g, '\\s')).join('|') + ')(?![\\u0900-\\u097F])', 'g');
+const CONS = { 'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'n', 'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'n', 'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n', 'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n', 'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm', 'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h', 'ळ': 'l' };
+const VOW = { 'अ': 'a', 'आ': 'a', 'इ': 'i', 'ई': 'i', 'उ': 'u', 'ऊ': 'oo', 'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'ऋ': 'ri', 'ऑ': 'o' };
+const MATRA = { 'ा': 'a', 'ि': 'i', 'ी': 'i', 'ु': 'u', 'ू': 'oo', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ृ': 'ri', 'ॉ': 'o', 'ॅ': 'e' };
+export function latin(text) {
+  const s = String(text || '').replace(LOAN_RE, (w) => ` ${LOAN[w.replace(/\s/g, ' ')] || ''} `);
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i], nx = s[i + 1];
+    if (CONS[ch]) {
+      let c = CONS[ch];
+      if (nx === '़') { c = { 'k': 'q', 'kh': 'kh', 'g': 'g', 'j': 'z', 'ph': 'f', 'd': 'r', 'dh': 'rh' }[c] || c; i++; }
+      const m = s[i + 1];
+      if (MATRA[m]) { out += c + MATRA[m]; i++; }
+      else if (m === '्') { out += c; i++; }
+      else {
+        // the inherent vowel, dropped at the end of a word ("bol", not "bola")
+        const end = !s[i + 1] || /[\s.,!?।]/.test(s[i + 1]);
+        out += end ? c : c + 'a';
+      }
+    } else if (VOW[ch]) out += VOW[ch];
+    else if (ch === 'ं' || ch === 'ँ') out += 'n';
+    else if (ch === 'ः') out += 'h';
+    else if (ch === '।') out += '.';
+    else if (ch >= '०' && ch <= '९') out += String(ch.charCodeAt(0) - 0x966);
+    else out += ch;
+  }
+  return out.replace(/\s+/g, ' ').trim();
+}
+const DEVA = /[\u0900-\u097F]/;
+
 // returns [{ id, cat, label }] (deduplicated); empty if nothing looks off
 export function scan(text, owner) {
-  const t = clean(text);
+  let t = clean(text);
+  if (DEVA.test(t)) t = `${t} \n ${latin(t)}`;
   if (!t) return [];
   const o = word(owner);
   const live = { owner_claim: ownerIs(o), claims_owner_ok: ownerOk(o) };

@@ -174,11 +174,14 @@ function current(number) {
 // ---------- security on the live call ----------
 // Scan what the caller said (tool arguments the model filled from speech, or live transcript lines). New threats are
 // added to the call; the first severe one alerts the owner once. Returns the warning to prepend to the tool's note.
-export function screen(number, texts) {
+export function screen(number, texts, forModel = true) {
   const found = G.scan((Array.isArray(texts) ? texts : [texts]).filter(Boolean).join(' \n '), ownerName());
   // nothing found and no call open: don't open one (a repeated end_call must still look like a repeat)
   if (!found.length && !live.has(normNumber(number) || 'unknown')) return { flags: [], warn: '' };
   const c = current(number);
+  // what the transcript showed (scanned with forModel = false) but the model hasn't been told yet comes with this tool call
+  c.told ||= new Set();
+  if (forModel) for (const f of c.flags) if (!c.told.has(f.id) && G.severe([f]) && !found.some((x) => x.id === f.id)) found.push(f);
   const fresh = found.filter((f) => !c.flags.some((x) => x.id === f.id));
   if (fresh.length) {
     c.flags.push(...fresh);
@@ -190,6 +193,7 @@ export function screen(number, texts) {
     const labels = [...new Set(c.flags.filter((f) => f.cat !== 'note').map((f) => f.label))].join(', ');
     notify(`⚠️ ${G.isScam(c.flags) ? 'Likely scam' : 'Someone tried to trick me'} from ${showNumber(c.number)}: ${labels}. I didn't share anything.`);
   }
+  if (forModel) for (const f of found) c.told.add(f.id);
   return { flags: found, warn: G.warning(found, ownerName()) };
 }
 // what this caller may hear, from the server's own records only (see guard.levelOf)
@@ -262,8 +266,9 @@ export function classifyCaller({ caller_number, name, org, purpose, guess, visit
   }
   const b = briefingFor({ number: c.number, name, org, purpose });
   if (b) { out.briefing = b; c.actions.push('used briefing: ' + b.who); }
+  const svc = kind === 'service' ? ` If they ask for an OTP, PIN, card, code or a payment, it's a scam: share nothing, say you'll tell ${ownerName()}, and call end_call with block = true.` : '';
   const cal = G.levelOf(c, known) === 'stranger' ? '' : ` If they ask whether ${ownerName()} is free, or when, call check_calendar before answering; never guess his schedule.`;
-  return { ...out, say: `${KIND_LABEL[kind]}. ${modeLine()} ${ruleLine(kind)}${b ? ' ' + briefingText(b) : ''}${cal}` };
+  return { ...out, say: `${KIND_LABEL[kind]}. ${modeLine()} ${ruleLine(kind)}${b ? ' ' + briefingText(b) : ''}${svc}${cal}` };
 }
 
 // close ones can always get through with the passcode
