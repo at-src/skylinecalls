@@ -65,6 +65,8 @@ r = await req('GET', '/api/line', { headers: { ...PUB, cookie } });
 check('the cookie opens the dashboard API', r.status === 200);
 r = await req('GET', '/health', { headers: PUB });
 check('public routes stay public (/health)', r.status === 200);
+r = await req('GET', '/api/webcall/status?run=guess-1234', { headers: PUB });
+check('web call status is public but says nothing about a run it never minted', r.status === 200 && r.body?.wrapped === false && r.body?.unknown === true);
 r = await req('GET', '/api/line');
 check("the owner's own machine works without a key", r.status === 200);
 

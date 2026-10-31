@@ -214,7 +214,7 @@ export function keyMatchesToken(header, token) {
 export const ownerCookie = (key, secure) => `sk=${encodeURIComponent(key)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}${secure ? '; Secure' : ''}`;
 // routes anyone on the internet may use (the landing page's "Talk to Varun" and health). Everything else under /api
 // and /connect is the owner's.
-export const PUBLIC_ROUTES = new Set(['GET /health', 'POST /api/webcall/session', 'GET /api/config']);
+export const PUBLIC_ROUTES = new Set(['GET /health', 'POST /api/webcall/session', 'GET /api/webcall/status', 'GET /api/config']);
 // a public visitor on the web call is always an unknown number; only the owner may pick a test number
 export const WEB_VISITOR = '+910000000000';
 

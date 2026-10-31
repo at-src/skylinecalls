@@ -22,6 +22,15 @@ import * as G from './guard.js';
 import { demoCall, personaList } from './demo/calls.js';
 import { registry as connectorRegistry, disconnect as connectorDisconnect, authUrl, handleCallback, redirectUri, gmailRecent, calendarBusy } from './connectors.js';
 const mints = new Map(); let lastMint = 0;
+// web calls this server opened: run id -> { number, at, wrapped (when Varun called end_call) }
+const webRuns = new Map();
+bus.on('event', (e) => {
+  if (e.type !== 'line.ended') return;
+  // every web visitor shares one number, so mark only the most recent open run (one call at a time is enforced)
+  const open = [...webRuns.values()].filter((w) => w.number === e.number && !w.wrapped).sort((a, b) => b.at - a.at)[0];
+  if (open) open.wrapped = Date.now();
+  for (const [id, w] of webRuns) if (Date.now() - w.at > 3600e3) webRuns.delete(id);
+});
 
 const PORT = Number(env.PORT || 3200);
 const TOKEN = env.TOOL_TOKEN || '';
@@ -274,8 +283,15 @@ const routes = {
     const j = await r.json();
     if (!r.ok || !j.run_id) return { error: 'Could not open the line right now.' };
     emit('call.started', { kind: 'line', caller: A.showNumber(number), number, web: true, execution: j.run_id });
+    webRuns.set(j.run_id, { number, at: Date.now(), wrapped: 0 });
     followCall(null, j.run_id, 'caller', number);
     return j;
+  },
+  // the landing page asks whether Varun has wrapped up this web call, then hangs up after his goodbye plays.
+  // Answers only for a run id this server minted (unguessable), and only "wrapped or not".
+  'GET /api/webcall/status': (b, q) => {
+    const w = webRuns.get(String(q.get('run') || ''));
+    return w ? { wrapped: !!w.wrapped } : { wrapped: false, unknown: true };
   },
   'POST /bolna/webhook': async (b) => { emit('bolna.event', { status: b.status, execution: b.id || b.execution_id, transcript: (b.transcript || '').slice(-600) }); return { ok: true }; },
   // ----- connectors: the registry with live connected state, and a disconnect -----
