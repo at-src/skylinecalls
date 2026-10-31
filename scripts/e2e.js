@@ -189,7 +189,7 @@ console.log("\n== 15. Sam's line: every call, by who it is");
 {
   const SPAM = '+919845012345', ROHIT = '+919900112233', NEW = '+919731100456', SHARMA = '+919845566778';
   let o = await tool('lookup_caller', { caller_number: SPAM });
-  check('unknown number: asks who it is', o.known === false && /Ask who they are/.test(o.say), say(o));
+  check('unknown number: asks who it is', o.known === false && /ask who they are/i.test(o.say), say(o));
   o = await tool('classify_caller', { caller_number: SPAM, name: 'Neha', org: 'LIC', purpose: 'term insurance plan', guess: 'unknown' });
   check('LIC pitch sorted as sales with a short time limit', o.kind === 'sales' && o.budget <= 30, `${o.kind} ${o.budget}s`);
   await tool('end_call', { caller_number: SPAM, name: 'Neha', org: 'LIC', kind: 'sales', summary: 'LIC pitch, declined' });

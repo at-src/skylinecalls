@@ -5,6 +5,7 @@
 // Usage: node scripts/setup-agents.js
 import '../src/env.js';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { LINE_DEFS } from '../src/line-tools.js';
 import { GUIDE_WELCOME, GUIDE_PROMPT, ALERT_PROMPT, CALIB_WELCOME, CALIB_PROMPT, KEYWORDS, LINE_WELCOME, LINE_PROMPT, LINE_KEYWORDS } from '../src/prompts.js';
 
 const { BOLNA_API_KEY: KEY, PUBLIC_URL, TOOL_TOKEN } = process.env;
@@ -52,28 +53,8 @@ const CALIB_DEFS = [
   ['finish_calibration', 'Check the path for gaps and save it.',
     { calibration_id: C('calibration_id from start_calibration') }, ['calibration_id']],
 ];
-// Sam's line: every call. The delivery tools (minus verify_caller, which classify_caller runs) come along.
-const N = S('caller_number from the call context');
-const LINE_DEFS = [
-  ['lookup_caller', 'Who is calling. Call it FIRST, before saying anything else, with the caller_number from the call context.',
-    { caller_number: N }, ['caller_number']],
-  ['classify_caller', 'Sort the caller once they say who they are or why they called. Returns the rule, the time limit and any briefing to follow. For deliveries and cabs it also checks the order.',
-    { caller_number: N, name: S('Their name, if they said'), org: S('Company or app they are from, e.g. LIC, Jio, Zepto'), purpose: S('Why they called, in their words'), guess: S('Your guess: close, vip, known, service, sales, delivery or unknown') }, ['caller_number', 'purpose']],
-  ['check_passcode', 'Check the code a caller gives to reach the owner urgently. Pass only the digits they said.',
-    { caller_number: N, code: S('The digits they said'), name: S('Who they say they are') }, ['caller_number', 'code']],
-  ['take_message', 'Send the owner a message from the caller.',
-    { caller_number: N, name: S('Who it is from'), message: S('The message, short, with any dates, times and amounts'), urgent: S('true if it is urgent') }, ['caller_number', 'message']],
-  ['alert_owner', 'Alert the owner right now: something urgent, or an offer outside a briefing.',
-    { caller_number: N, name: S('Who is calling'), reason: S('Why, in one line with any amounts') }, ['caller_number', 'reason']],
-  ['set_reminder', 'The caller wants the owner to call back or be reminded of something at a time. You cannot place calls, so save a reminder; the owner gets a nudge at that time.',
-    { caller_number: N, name: S('Who the reminder is about'), text: S('What to remind, e.g. "Call Rahul back about the quote"'), when: S('When, in their words: "6pm", "in 20 minutes", "tomorrow 9am"') }, ['text']],
-  ['check_calendar', "Check whether the owner is free on a day, from his Google Calendar. Use when a caller asks if he's available or wants to set a time. If the calendar is not connected, say so and take a message.",
-    { date: S("The day to check, as YYYY-MM-DD. Leave empty for today.") }, []],
-  ['check_mail', "Check the owner's recent mail for something a caller expects (e.g. an invoice, a confirmation). Read-only. If Gmail is not connected, say so.",
-    { query: S('What to look for, in Gmail search terms, e.g. "from:zepto out for delivery". Empty for the latest few.') }, []],
-  ['end_call', 'Log the call before hanging up. Always call it once at the end.',
-    { caller_number: N, name: S('Their name'), org: S('Their company'), kind: S('close, vip, known, service, sales, delivery or unknown'), summary: S('One line: what happened, with amounts and dates'), outcome: S('e.g. declined, message taken, agreed: rent by the 10th'), block: S('true for spam or sales, to cut them off next time'), relation: S('Who they are to the owner, if they said') }, ['caller_number', 'summary']],
-];
+// Varun's line: every call. The delivery tools (minus verify_caller, which classify_caller runs) come along.
+// The line tools live in src/line-tools.js so the red-team eval tests exactly what's deployed.
 const PRE = { lookup_caller: '', classify_caller: '', check_passcode: 'Ek second', take_message: '', alert_owner: '', set_reminder: '', end_call: '', verify_caller: 'Haan ji, bolo', ask_customer: 'Haan, ruko ek second', check_approval: 'Haan ek second', next_instruction: '', rider_status: '', call_customer: 'Ruko, bulata hoon', log_outcome: '', check_calendar: 'Ek second, dekhta hoon', check_mail: 'Ek second, check karta hoon' };
 
 const toolsFor = (defs) => ({

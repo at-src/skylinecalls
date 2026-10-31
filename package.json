@@ -8,7 +8,9 @@
     "keys": "node scripts/keys.js",
     "start": "node src/server.js",
     "test:maps": "node scripts/test-maps.js",
-    "test": "node scripts/e2e.js"
+    "test": "node scripts/e2e.js && node scripts/security.js",
+    "test:security": "node scripts/security.js",
+    "test:redteam": "node scripts/redteam.js 3"
   },
   "engines": { "node": ">=22" },
   "license": "MIT"

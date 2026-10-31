@@ -18,6 +18,7 @@ import { SENDERS, GUIDE_NUMBER, senderKeys, senderFor, registerOrder, orderLocat
 import { startCalibration, getCalibration, saveAnchor, saveStep, saveDoor, saveFallback, finish } from './calibrate.js';
 import { cityAt } from './city.js';
 import * as A from './assistant.js';
+import * as G from './guard.js';
 import { demoCall, personaList } from './demo/calls.js';
 import { registry as connectorRegistry, disconnect as connectorDisconnect, authUrl, handleCallback, redirectUri, gmailRecent, calendarBusy } from './connectors.js';
 const mints = new Map(); let lastMint = 0;
@@ -113,27 +114,27 @@ const TOOLS = {
 
   // ----- connectors Varun can use on a call (only if the owner linked them) -----
   // Is the owner free on a day? Reads Google Calendar (read-only). Needs the gcal connector.
+  // What each caller may hear is decided here from the server's records (guard.levelOf), not by the model:
+  // trusted (saved close one / VIP, or passcode) gets event titles; known gets busy times only; anyone else nothing.
   async check_calendar(a) {
-    const r = await calendarBusy(val(a.date));
-    if (!r.connected) return { say: "Google Calendar isn't connected, so I can't see his schedule. I can take a message instead." };
-    if (!r.ok) return { say: "I couldn't read the calendar just now. I can take a message instead." };
-    if (r.free) return { say: `Nothing is on ${r.date} — he looks free that day.` };
-    const list = r.events.slice(0, 4).map((e) => {
-      const t = e.allDay ? 'all day' : new Date(e.start).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
-      return `${e.summary} (${t})`;
-    }).join('; ');
-    return { say: `On ${r.date} he has: ${list}. So he's busy then.` };
+    const level = A.accessFor(val(a.caller_number));
+    const r = level === 'trusted' || level === 'known' ? await calendarBusy(val(a.date)) : null;
+    const out = G.calendarReply(level, r, A.profile().owner);
+    emit('line.shared', { tool: 'check_calendar', level, shared: out.shared });
+    return { ...out, level };
   },
-  // Did an expected mail arrive? Reads Gmail (read-only) for recent subjects. Needs the gmail connector.
+  // Did an expected mail arrive? Only for trusted callers, sender + subject only, instruction-like subjects withheld.
   async check_mail(a) {
-    const r = await gmailRecent({ query: val(a.query), max: 5 });
-    if (!r.connected) return { say: "Gmail isn't connected, so I can't check his mail. I can take a message instead." };
-    if (!r.ok) return { say: "I couldn't read the mail just now." };
-    if (!r.messages.length) return { say: val(a.query) ? "Nothing matching that in his recent mail." : 'His inbox looks quiet — nothing recent.' };
-    const list = r.messages.slice(0, 3).map((m) => m.subject).join('; ');
-    return { say: `Recent mail: ${list}.` };
+    const level = A.accessFor(val(a.caller_number));
+    const r = level === 'trusted' ? await gmailRecent({ query: val(a.query), max: 5 }) : null;
+    const out = G.mailReply(level, r, A.profile().owner);
+    emit('line.shared', { tool: 'check_mail', level, shared: out.shared });
+    return { ...out, level };
   },
 };
+// tools on Varun's line, and which of their arguments carry the caller's own words (these get scanned)
+const LINE_TOOLS = new Set(['lookup_caller', 'classify_caller', 'check_passcode', 'take_message', 'alert_owner', 'set_reminder', 'end_call', 'check_calendar', 'check_mail']);
+const CALLER_WORDS = ['name', 'org', 'purpose', 'message', 'reason', 'text', 'query', 'seen', 'caller_says', 'service', 'relation'];
 
 // ---------- http ----------
 const weatherCache = new Map();
@@ -263,7 +264,9 @@ const routes = {
     if (recent.length >= 8 || now - lastMint < 15000) return { error: 'The line is busy. Try again in a minute.' };
     mints.set(ip, [...recent, now]); lastMint = now;
     const u = b.user_data || {};
-    const number = A.normNumber(u.caller_number) || '+910000000000';
+    // a visitor can't pick whose number they call from; only the owner may test as a saved contact
+    const number = (G.isOwner(req) && A.normNumber(u.caller_number)) || G.WEB_VISITOR;
+    G.expectCaller(number);
     const r = await fetch('https://api.bolna.ai/web-call/freeswitch-session', {
       method: 'POST', headers: { Authorization: `Bearer ${env.BOLNA_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ agent_id: env.BOLNA_LINE_AGENT_ID, user_data: { owner: A.profile().owner, caller_number: number, customer_name: A.profile().owner, visit_id: '' } }),
@@ -271,7 +274,7 @@ const routes = {
     const j = await r.json();
     if (!r.ok || !j.run_id) return { error: 'Could not open the line right now.' };
     emit('call.started', { kind: 'line', caller: A.showNumber(number), number, web: true, execution: j.run_id });
-    followCall(null, j.run_id, 'caller');
+    followCall(null, j.run_id, 'caller', number);
     return j;
   },
   'POST /bolna/webhook': async (b) => { emit('bolna.event', { status: b.status, execution: b.id || b.execution_id, transcript: (b.transcript || '').slice(-600) }); return { ok: true }; },
@@ -286,15 +289,22 @@ const server = createServer(async (req, res) => {
     // tools: POST /tools/<name>, protected by the shared token Bolna sends
     const tm = url.pathname.match(/^\/tools\/([a-z_]+)$/);
     if (tm && req.method === 'POST') {
-      if (TOKEN && req.headers.authorization !== `Bearer ${TOKEN}`) return json(res, 401, { say: 'unauthorized' });
+      // with no token configured, tools only answer the owner's own machine
+      if (TOKEN ? !G.keyMatchesToken(req.headers.authorization, TOKEN) : !G.isLocal(req)) return json(res, 401, { say: 'unauthorized' });
       const fn = TOOLS[tm[1]];
       if (!fn) return json(res, 404, { say: 'unknown tool' });
-      const args = { ...Object.fromEntries(url.searchParams), ...(await readBody(req)) };
-      emit('tool.call', { tool: tm[1], args });
-      const out = await fn(args);
-      emit('tool.result', { tool: tm[1], out });
+      const out = await runTool(tm[1], { ...Object.fromEntries(url.searchParams), ...(await readBody(req)) });
       return json(res, 200, out);
     }
+    // owner login: /login?key=... sets an HttpOnly cookie, then the dashboard works through the tunnel too
+    if (url.pathname === '/login' && req.method === 'GET') {
+      if (!G.keyMatches(url.searchParams.get('key'))) { res.writeHead(401, { 'Content-Type': 'text/plain' }); return res.end('Wrong key.'); }
+      res.writeHead(302, { 'Set-Cookie': G.ownerCookie(G.ownerKey(), !G.isLocal(req)), Location: '/' }); return res.end();
+    }
+    // everything under /api and /connect is the owner's, except the few public routes (the landing page's call)
+    const routeKey = `${req.method} ${url.pathname}`;
+    const ownerOnly = (url.pathname.startsWith('/api/') || url.pathname === '/connect/google') && !G.PUBLIC_ROUTES.has(routeKey);
+    if (ownerOnly && !G.isOwner(req)) return json(res, 401, { error: 'owner only' });
     // sender API (the SDK in the company's rider app): POST /v1/orders, /v1/orders/<id>/location, /v1/orders/<id>/status,
     // GET /v1/orders/<id>. Authorised by the sender's API key.
     if (url.pathname.startsWith('/v1/')) {
@@ -355,7 +365,7 @@ const server = createServer(async (req, res) => {
 });
 
 // Polls a live Bolna call and emits each new transcript line once, plus the end of the call.
-function followCall(visit, execution, userRole = 'rider') {
+function followCall(visit, execution, userRole = 'rider', number = '') {
   let seen = 0, tries = 0;
   const timer = setInterval(async () => {
     try {
@@ -363,7 +373,11 @@ function followCall(visit, execution, userRole = 'rider') {
       const lines = String(e.transcript || '').split('\n').map((l) => l.trim()).filter(Boolean);
       for (; seen < lines.length; seen++) {
         const m = lines[seen].match(/^(assistant|user)\s*:\s*(.*)$/i);
-        if (m && m[2]) emit('call.line', { visit, role: m[1].toLowerCase() === 'user' ? userRole : 'agent', text: m[2] });
+        if (m && m[2]) {
+          emit('call.line', { visit, role: m[1].toLowerCase() === 'user' ? userRole : 'agent', text: m[2] });
+          // every word the caller says on Varun's line is scanned too, not just what reaches a tool
+          if (number && m[1].toLowerCase() === 'user') A.screen(number, G.cap(m[2], 500));
+        }
       }
       if (['completed', 'failed', 'no-answer', 'busy', 'canceled', 'error'].includes(e.status) || ++tries > 300) {
         clearInterval(timer); emit('call.ended', { visit, status: e.status });
@@ -372,6 +386,18 @@ function followCall(visit, execution, userRole = 'rider') {
   }, 1500);
 }
 
+// One way into every tool (HTTP from Bolna, the demos, the evals): cap the arguments, scan the caller's words on
+// Varun's line, run the tool, and put any security warning in front of its note.
+export async function runTool(name, raw) {
+  const args = G.capArgs(raw);
+  emit('tool.call', { tool: name, args });
+  let check = null;
+  if (LINE_TOOLS.has(name)) check = A.screen(val(args.caller_number), CALLER_WORDS.map((k) => val(args[k])));
+  const out = await TOOLS[name](args);
+  if (check?.warn && out && typeof out === 'object') { out.say = `${check.warn} ${out.say || ''}`.trim(); out.security = check.flags.map((f) => f.id); }
+  emit('tool.result', { tool: name, out });
+  return out;
+}
 export { TOOLS };
 export function start(port = PORT) {
   return new Promise((ok) => server.listen(port, () => {

@@ -6,6 +6,7 @@ import { notify } from './notify.js';
 import { detectService } from './visits.js';
 import { verify } from './guide.js';
 import { env } from './env.js';
+import * as G from './guard.js';
 
 // ---------- what Sam told it ----------
 export const KINDS = ['close', 'vip', 'known', 'service', 'sales', 'delivery', 'unknown'];
@@ -111,9 +112,13 @@ function briefingFor({ number, name, org, purpose }) {
   const n = normNumber(number), text = [name, org, purpose].map(words).join(' ');
   return briefings().find((b) => (n && b.numbers.includes(n)) || b.orgs.some((o) => o && text.includes(o)) || b.names.some((x) => x && new RegExp(`\\b${x}\\b`).test(text))) || null;
 }
+// Briefings come from pasted chats, which hold other people's words too: any item that reads like an instruction to
+// the assistant (rather than a fact or a limit) is dropped before it reaches the call.
+const safeItem = (s) => !G.severe(G.scan(s, ownerName()));
+const safeList = (l) => (l || []).filter(safeItem);
 const briefingText = (b) => [
-  `BRIEFING from Sam about ${b.who}: ${b.about}`, b.goal && `Sam wants: ${b.goal}`,
-  b.can_agree.length && `You may agree to: ${b.can_agree.join('; ')}.`, b.must_not.length && `Never agree to: ${b.must_not.join('; ')}.`,
+  `BRIEFING from Sam about ${b.who}: ${safeItem(b.about) ? b.about : ''}`, safeItem(b.goal) && b.goal && `Sam wants: ${b.goal}`,
+  safeList(b.can_agree).length && `You may agree to: ${safeList(b.can_agree).join('; ')}.`, safeList(b.must_not).length && `Never agree to: ${safeList(b.must_not).join('; ')}.`,
   b.private.length && `Keep private, never mention: ${b.private.join('; ')}.`,
   'Anything outside this: say you will take it to Sam. Never sign, pay or commit to more than the briefing allows.',
 ].filter(Boolean).join(' ');
@@ -160,9 +165,40 @@ function sortCaller({ name, org, purpose, guess }) {
 const live = new Map(); // number -> the call in progress
 function current(number) {
   const n = normNumber(number) || 'unknown';
-  if (!live.has(n)) live.set(n, { id: id('c'), number: n, started: Date.now(), kind: 'unknown', name: '', org: '', actions: [] });
+  if (!live.has(n)) live.set(n, { id: id('c'), number: n, started: Date.now(), kind: 'unknown', name: '', org: '', actions: [], flags: [] });
   return live.get(n);
 }
+
+// ---------- security on the live call ----------
+// Scan what the caller said (tool arguments the model filled from speech, or live transcript lines). New threats are
+// added to the call; the first severe one alerts the owner once. Returns the warning to prepend to the tool's note.
+export function screen(number, texts) {
+  const c = current(number);
+  const found = G.scan((Array.isArray(texts) ? texts : [texts]).filter(Boolean).join(' \n '), ownerName());
+  const fresh = found.filter((f) => !c.flags.some((x) => x.id === f.id));
+  if (fresh.length) {
+    c.flags.push(...fresh);
+    c.actions.push('flagged: ' + fresh.map((f) => f.label).join(', '));
+    emit('line.flag', { call: c.id, number: c.number, flags: fresh });
+  }
+  if (G.severe(c.flags) && !c.warned) {
+    c.warned = true;
+    const labels = [...new Set(c.flags.filter((f) => f.cat !== 'note').map((f) => f.label))].join(', ');
+    notify(`⚠️ ${G.isScam(c.flags) ? 'Likely scam' : 'Someone tried to trick me'} from ${showNumber(c.number)}: ${labels}. I didn't share anything.`);
+  }
+  return { flags: found, warn: G.warning(found, ownerName()) };
+}
+// what this caller may hear, from the server's own records only (see guard.levelOf)
+export function accessFor(number) {
+  const c = current(number);
+  return G.levelOf(c, c.spoofed ? null : people()[c.number]);
+}
+// the passcode, however it's written ("55434", "5 5 4 3 4", "5-5-4-3-4"), masked; amounts and dates are left alone
+export function redactCode(s) {
+  const re = new RegExp(profile().passcode.split('').join('[\\s,.-]*'), 'g');
+  return String(s || '').replace(re, '[code]');
+}
+export const peek = (number) => live.get(normNumber(number) || 'unknown') || null;
 const ownerName = () => profile().owner;
 function modeLine() {
   const p = profile();
@@ -173,7 +209,12 @@ function ruleLine(kind) { const r = profile().rules[kind] || profile().rules.unk
 // at the start of every call: who is this?
 export function lookupCaller({ caller_number }) {
   const c = current(caller_number);
-  const p = people()[c.number];
+  // the number must be one the server opened this call for, else a caller could talk the model into "being" Mom
+  if (!G.boundOk(c.number)) {
+    c.spoofed = true; c.actions.push('number did not match the call: treated as a stranger');
+    emit('line.flag', { call: c.id, number: c.number, flags: [{ id: 'spoofed_number', cat: 'impersonation', label: 'used a number that is not the calling line' }] });
+  }
+  const p = c.spoofed ? null : people()[c.number];
   emit('line.call', { call: c.id, number: c.number });
   if (p?.kind === 'blocked') {
     c.kind = 'blocked'; c.name = p.name || ''; c.actions.push('cut off: blocked number');
@@ -185,20 +226,27 @@ export function lookupCaller({ caller_number }) {
     const seen = p.calls ? ` They have called ${p.calls} time${p.calls > 1 ? 's' : ''} before${p.last_summary ? `; last time: ${p.last_summary}` : ''}.` : '';
     return {
       known: true, kind: p.kind, name: p.name, relation: p.relation || '', briefing: b, budget: profile().rules[p.kind]?.budget, call_id: c.id, mode: profile().mode,
-      say: `This is ${p.name}, ${ownerName()}'s ${p.relation || KIND_LABEL[p.kind].toLowerCase()}.${seen} Greet them by name, naturally, and do NOT ask who they are. ${modeLine()} ${ruleLine(p.kind)}${b ? ' ' + briefingText(b) : ''}`,
+      say: `This is ${p.name}, ${ownerName()}'s ${p.relation || KIND_LABEL[p.kind].toLowerCase()}.${seen} Greet them by name, naturally, and do NOT ask who they are. ${modeLine()} ${ruleLine(p.kind)}${b ? ' ' + briefingText(b) : ''} If they ask whether ${ownerName()} is free, or when, call check_calendar before answering.`,
     };
   }
-  return { known: false, kind: 'unknown', call_id: c.id, mode: profile().mode, budget: profile().rules.unknown.budget, say: `Not in ${ownerName()}'s contacts and never called before. Ask who they are and what it is about, in one short line ("Haan ji, kaun bol rahe hain? Kis baare mein?"). Do not say ${ownerName()} is unavailable yet. When they answer, call classify_caller. ${modeLine()}` };
+  return { known: false, kind: 'unknown', call_id: c.id, mode: profile().mode, budget: profile().rules.unknown.budget, say: `Not in ${ownerName()}'s contacts and never called before. If they have ALREADY said who they are or why they called, call classify_caller right now with that; don't ask again. Otherwise ask who they are and what it is about, in one short line ("Haan ji, kaun bol rahe hain? Kis baare mein?"), and call classify_caller when they answer. Do not say ${ownerName()} is unavailable yet. ${modeLine()}` };
 }
 
 // once the caller says who they are and why
 export function classifyCaller({ caller_number, name, org, purpose, guess, visit_id }) {
   const c = current(caller_number);
-  const known = people()[c.number];
-  const kind = known && known.kind !== 'unknown' ? known.kind : sortCaller({ name, org, purpose, guess });
-  Object.assign(c, { kind, name: name || c.name, org: org || c.org, purpose: purpose || c.purpose });
+  const known = c.spoofed ? null : people()[c.number];
+  let kind = known && known.kind !== 'unknown' ? known.kind : sortCaller({ name, org, purpose, guess });
+  // a number that isn't saved can't become family, a VIP or a known contact on its own say-so (or the model's guess)
+  let claimed = '';
+  if ((!known || known.kind === 'unknown') && G.PRIVILEGED_KINDS.has(kind)) { claimed = kind; kind = 'unknown'; c.actions.push('claimed to be ' + KIND_LABEL[claimed].toLowerCase() + ': not on file'); }
+  if (known?.kind === 'blocked') kind = 'sales';
+  Object.assign(c, { kind, name: name || c.name, org: org || c.org, purpose: purpose || c.purpose, claimed });
   const r = profile().rules[kind];
   const out = { kind, label: KIND_LABEL[kind], name: c.name, org: c.org, budget: r.budget, rule: r.say, call_id: c.id };
+  if (claimed) {
+    return { ...out, claimed, say: `They say they are close to ${ownerName()}, but this number is not saved, so treat them as unknown: be kind, share nothing personal (no schedule, mail, address or anyone's number), and take a message. If it's really urgent, they can give the passcode. ${modeLine()}` };
+  }
   if (kind === 'delivery') {
     // the delivery skill: is this someone Sam is expecting?
     const v = verify({ visit_id, service: detectService([org, name, purpose].join(' ')) || '', code: '', caller_number: c.number });
@@ -207,14 +255,22 @@ export function classifyCaller({ caller_number, name, org, purpose, guess, visit
   }
   const b = briefingFor({ number: c.number, name, org, purpose });
   if (b) { out.briefing = b; c.actions.push('used briefing: ' + b.who); }
-  return { ...out, say: `${KIND_LABEL[kind]}. ${modeLine()} ${ruleLine(kind)}${b ? ' ' + briefingText(b) : ''}` };
+  const cal = G.levelOf(c, known) === 'stranger' ? '' : ` If they ask whether ${ownerName()} is free, or when, call check_calendar before answering; never guess his schedule.`;
+  return { ...out, say: `${KIND_LABEL[kind]}. ${modeLine()} ${ruleLine(kind)}${b ? ' ' + briefingText(b) : ''}${cal}` };
 }
 
 // close ones can always get through with the passcode
 export function checkPasscode({ caller_number, code, name }) {
   const c = current(caller_number);
-  const ok = String(code || '').replace(/\D/g, '') === profile().passcode;
-  if (!ok) { c.actions.push('wrong passcode'); return { ok: false, say: 'That is not the code. Do not alert Sam. Offer to take a message.' }; }
+  // limits: 3 tries a call, 5 a number an hour, 20 for the whole line an hour. Locked means even the right code fails.
+  const gate = G.passcodeAllowed(c, c.number);
+  if (!gate.ok) {
+    if (!c.lockWarned) { c.lockWarned = true; c.actions.push('passcode locked'); notify(`⚠️ Someone at ${showNumber(c.number)} kept guessing your passcode. I've locked it for them.`); emit('line.flag', { call: c.id, number: c.number, flags: [{ id: 'passcode_locked', cat: 'fishing', label: 'kept guessing the passcode' }] }); }
+    return { ok: false, locked: true, say: `No more code attempts on this line. Do not alert ${ownerName()} and do not say how many tries there were. Offer to take a message, then end the call.` };
+  }
+  const ok = G.sameCode(String(code || '').replace(/\D/g, ''), profile().passcode);
+  if (!ok) { G.passcodeWrong(c, c.number); c.actions.push('wrong passcode'); return { ok: false, say: `That is not the code. Do not alert ${ownerName()}, don't say which digits were wrong or how many tries are left. Offer to take a message.` }; }
+  if (c.spoofed) { c.actions.push('right code on a mismatched number'); }
   c.kind = 'close'; c.name = name || c.name; c.passcode = true; c.actions.push('passcode correct: alerted Sam');
   notify(`🔴 ${c.name || 'Someone'} is calling with your code from ${showNumber(c.number)}. Call them back now.`);
   emit('line.alert', { call: c.id, number: c.number, name: c.name, reason: 'passcode' });
@@ -226,7 +282,10 @@ export function takeMessage({ caller_number, name, message, urgent }) {
   const u = urgent === true || urgent === 'true';
   c.message = String(message || '').trim(); c.actions.push(u ? 'urgent message' : 'took a message');
   notify(`${u ? '🔴' : '💬'} Message from ${who}: ${c.message}`);
-  return { ok: true, say: `Message saved and sent to ${ownerName()}${u ? ' as urgent' : ''}. Read it back in one line to confirm, then wrap up.` };
+  // the read-back is spoken to the caller, so any code digits in it are masked (a guesser who finally says the
+  // right code must not hear it confirmed back)
+  const back = redactCode(c.message);
+  return { ok: true, say: `Message saved and sent to ${ownerName()}${u ? ' as urgent' : ''}. Read it back in one line, using only this wording: ⟦${back}⟧. Never repeat any code or digits the caller said. Then wrap up.` };
 }
 export function alertOwner({ caller_number, name, reason }) {
   const c = current(caller_number); const who = name || c.name || showNumber(c.number);
@@ -240,12 +299,19 @@ export function alertOwner({ caller_number, name, reason }) {
 export function endCall({ caller_number, name, org, kind, summary, outcome, block, relation }) {
   const c = current(caller_number);
   live.delete(c.number);
-  const k = KINDS.includes(kind) ? kind : c.kind;
+  G.releaseCaller(c.number);
+  // the model's "kind" is a claim like any other: an unsaved number is only ever learned as service/sales/delivery/
+  // unknown (or close, if the server itself checked the passcode)
+  let k = KINDS.includes(kind) ? kind : c.kind;
+  const all = people(); const before = c.spoofed ? null : all[c.number];
+  if (!before && G.PRIVILEGED_KINDS.has(k) && !c.passcode) k = c.kind && !G.PRIVILEGED_KINDS.has(c.kind) ? c.kind : 'unknown';
+  if (G.isScam(c.flags)) k = 'sales';
   const seconds = Math.round((Date.now() - c.started) / 1000);
   const who = name || c.name || '';
-  const doBlock = block === true || block === 'true' || (k === 'sales' && block !== false && block !== 'false');
-  const all = people(); const before = all[c.number];
-  if (c.number !== 'unknown') {
+  // a saved close one or VIP is never auto-blocked by the model; scams always are
+  const trustedBefore = before && (before.kind === 'close' || before.kind === 'vip');
+  const doBlock = !trustedBefore && (G.isScam(c.flags) || block === true || block === 'true' || (k === 'sales' && block !== false && block !== 'false'));
+  if (c.number !== 'unknown' && c.number !== G.WEB_VISITOR && !c.spoofed) {
     if (doBlock) all[c.number] = { ...(before || {}), name: who || org || 'Spam', org: org || c.org || '', kind: 'blocked', note: [org || c.org, summary].filter(Boolean).join(': ').slice(0, 120) };
     else if (!before) all[c.number] = { name: who || org || '', org: org || c.org || '', relation: relation || '', kind: c.passcode ? 'close' : k };
     const p = all[c.number];

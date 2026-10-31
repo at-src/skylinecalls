@@ -16,6 +16,7 @@
 //   Calendar events.list:      https://developers.google.com/calendar/v3/reference/events/list
 import { env } from './env.js';
 import { load, save, emit } from './store.js';
+import { newState, takeState } from './guard.js';
 
 // Google OAuth client, read from .env (built by scripts/keys.js from the Desktop googleauth.txt).
 const CLIENT_ID = () => env.GOOGLE_CLIENT_ID || '';
@@ -75,7 +76,7 @@ export function authUrl(scope) {
     access_type: 'offline',        // we want a refresh_token for offline use
     include_granted_scopes: 'true',// keep scopes already granted to this client
     prompt: 'consent',             // force a refresh_token even on a repeat connect
-    state: scope,                  // carried through the callback so we know which connector
+    state: newState(scope),        // one-time nonce (CSRF): the callback only accepts a state we issued
   });
   return `${AUTH}?${p}`;
 }
@@ -84,7 +85,9 @@ export function authUrl(scope) {
 // Returns { ok, id } so the route can redirect. Never throws the raw error outward.
 export async function handleCallback({ code, state }) {
   if (!hasGoogle()) return { ok: false, error: 'google not configured' };
-  const scope = SCOPES[state] ? state : 'gmail';
+  // a callback we didn't start (a forged link that would attach someone else's Google account) is refused
+  const scope = takeState(state);
+  if (!scope || !SCOPES[scope] || !code) return { ok: false, error: 'invalid or expired state' };
   const id = CONN_OF_SCOPE[scope];
   try {
     const r = await fetch(TOKEN, {
