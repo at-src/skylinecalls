@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import '../src/env.js';
 process.env.DRY_RUN = '1';
+process.env.OWNER_NAME = 'Sam'; // tests always run as the placeholder owner
 const DATA = mkdtempSync(join(tmpdir(), 'ttd-red-'));
 process.env.TTD_DATA = DATA;
 const KEY = process.env.OPENAI_API_KEY;

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 process.env.DRY_RUN = '1';
+process.env.OWNER_NAME = 'Sam'; // tests always run as the placeholder owner
 process.env.TTD_DATA = mkdtempSync(join(tmpdir(), 'ttd-'));
 process.env.APPROVAL_WAIT_MS = '1500';
 process.env.TOOL_TOKEN = 'test-token';

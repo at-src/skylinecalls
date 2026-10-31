@@ -59,7 +59,8 @@ const DEFAULT_BRIEFINGS = [
     until: '', source: 'Imported from a ChatGPT chat',
   },
 ];
-export const profile = () => load('profile', DEFAULT_PROFILE);
+// OWNER_NAME (in .env) sets whose line this is, overriding the saved profile; the default is the placeholder "Sam"
+export const profile = () => { const p = load('profile', DEFAULT_PROFILE); if (env.OWNER_NAME) p.owner = String(env.OWNER_NAME).trim().slice(0, 40); return p; };
 export const people = () => load('people', DEFAULT_PEOPLE);
 export const briefings = () => load('briefings', DEFAULT_BRIEFINGS);
 export const calls = () => load('calls', []);
