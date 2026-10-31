@@ -71,10 +71,19 @@ const seconds = (file) => {
   const m = out.match(/Duration: (\d+):(\d+):([\d.]+)/);
   return m ? Math.round((Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])) * 100) / 100 : 0;
 };
-// callers sound like a phone line (band-limited); the agent is a touch cleaner. Both loudness-matched.
-function encode(wav, mp3, phone) {
-  const filter = phone ? 'highpass=f=250,lowpass=f=3600,loudnorm=I=-18:TP=-2' : 'highpass=f=90,loudnorm=I=-17:TP=-2';
-  execFileSync(FF, ['-y', '-loglevel', 'error', '-i', wav, '-af', filter, '-ac', '1', '-ar', '24000', '-b:a', '64k', mp3]);
+// Callers sound like a phone line: band-limited, with the noise of where they are (street for a rider, a call-centre
+// hiss for the "bank", a quiet room for family) mixed under the voice. The agent stays clean. Loudness-matched.
+const NOISE = { street: ['brown', 0.05, 900], office: ['pink', 0.018, 2400], room: ['pink', 0.008, 1800] };
+const PLACE = { rider: 'street', scam: 'office', renewal: 'office', sales: 'office', mom: 'room', friend: 'room', inject: 'room' };
+function encode(wav, mp3, phone, place = 'room') {
+  if (!phone) {
+    execFileSync(FF, ['-y', '-loglevel', 'error', '-i', wav, '-af', 'highpass=f=90,loudnorm=I=-17:TP=-2', '-ac', '1', '-ar', '24000', '-b:a', '64k', mp3]);
+  } else {
+    const [color, amp, cut] = NOISE[place] || NOISE.room;
+    execFileSync(FF, ['-y', '-loglevel', 'error', '-i', wav, '-f', 'lavfi', '-i', `anoisesrc=color=${color}:amplitude=${amp}:sample_rate=24000`,
+      '-filter_complex', `[0:a]aresample=24000,highpass=f=250,lowpass=f=3600,apad=pad_dur=0.25[v];[1:a]lowpass=f=${cut},highpass=f=120[n];[v][n]amix=inputs=2:duration=first:dropout_transition=0,loudnorm=I=-18:TP=-2`,
+      '-ac', '1', '-ar', '24000', '-b:a', '64k', mp3]);
+  }
   rmSync(wav);
 }
 
@@ -108,7 +117,7 @@ for (const [id, call] of Object.entries(calls)) {
     const said = await devanagari(text);
     if (who === 'varun') writeFileSync(wav, await cartesia(AGENT, said));
     else { const [voice, how] = CALLERS[id] || CALLERS.rider; writeFileSync(wav, await openaiTts(voice, said, how)); }
-    encode(wav, mp3, who !== 'varun');
+    encode(wav, mp3, who !== 'varun', PLACE[id]);
     manifest[name] = seconds(mp3);
     console.log(name, who, manifest[name] + 's', '|', said.slice(0, 60));
   }
