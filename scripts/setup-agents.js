@@ -68,7 +68,8 @@ The conversation is NOT complete if:
 The last message in the transcript must be from the user.`;
 
 // what Varun says while a tool runs (otherwise Bolna fills the pause with an English "Just give me a moment…")
-const PRE = { lookup_caller: 'Haan ji', classify_caller: 'Achha', check_passcode: 'Ek second', take_message: 'Haan, likh raha hoon', alert_owner: 'Ek minute', set_reminder: 'Haan, note kar liya', end_call: 'Theek hai', verify_caller: 'Haan ji, bolo', ask_customer: 'Haan, ruko ek second', check_approval: 'Haan ek second', next_instruction: 'Haan', rider_status: 'Ek second', call_customer: 'Ruko, bulata hoon', log_outcome: 'Theek hai', check_calendar: 'Ek second, dekhta hoon', check_mail: 'Ek second, check karta hoon' };
+// in Devanagari: the Hindi voice reads these as written
+const PRE = { lookup_caller: 'हाँ जी', classify_caller: 'अच्छा', check_passcode: 'एक second', take_message: 'हाँ, लिख रहा हूँ', alert_owner: 'एक minute', set_reminder: 'हाँ, note कर लिया', end_call: 'ठीक है', verify_caller: 'हाँ जी, बोलो', ask_customer: 'हाँ, रुको एक second', check_approval: 'हाँ, एक second', next_instruction: 'हाँ', rider_status: 'एक second', call_customer: 'रुको, बुलाता हूँ', log_outcome: 'ठीक है', check_calendar: 'एक second, देखता हूँ', check_mail: 'एक second, check करता हूँ' };
 
 const toolsFor = (defs) => ({
   tools: defs.map(([name, description, properties, required]) => ({
@@ -93,12 +94,14 @@ const agentBody = ({ name, welcome, prompt, tools, terminate = 600 }) => ({
       toolchain: { execution: 'parallel', pipelines: [['transcriber', 'llm', 'synthesizer']] },
       task_config: {
         hangup_after_silence: 22, call_terminate: terminate, optimize_latency: true, number_of_words_for_interruption: 2, incremental_delay: 400, backchanneling: false, use_fillers: false,
+        // filter background noise (a TV, people talking nearby) before the transcriber hears it; Bolna's default level
+        noise_cancellation_level: 85,
         // in Hinglish, like the rest of the call (Bolna's default is an English "Hey, are you still there")
-        check_if_user_online: true, check_user_online_message: 'Hello? Aap line pe hain?', trigger_user_online_message_after: 14,
+        check_if_user_online: true, check_user_online_message: 'Hello? आप line पे हैं?', trigger_user_online_message_after: 14,
         // hang up on a real goodbye (Bolna checks this prompt after the caller speaks). Mid-call "haan"/"theek hai" must
         // not end it, and if the caller cuts into the goodbye with something new, the hangup is cancelled.
         hangup_after_LLMCall: true, interruptible_hangup_message: true, call_cancellation_prompt: HANGUP_PROMPT,
-        call_hangup_message: 'Theek hai ji, alvida!',
+        call_hangup_message: 'ठीक है जी, अलविदा!',
       },
       tools_config: {
         input: { format: 'wav', provider: 'plivo' },

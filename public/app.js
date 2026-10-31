@@ -1,6 +1,9 @@
 // Skyline live screen: a night-time 3D city (three.js, built from OpenStreetMap) + the live call.
 // Everything on the map is driven by server events: where the agent believes the rider is, the door path, the home.
 import * as THREE from 'three';
+import { shown, script } from './script.js';
+// text Varun or a caller said: shown in English letters or Hindi (the owner's choice); data-src keeps the original
+const said = (t) => `<span data-src="${esc(t)}">${esc(shown(t))}</span>`;
 // the owner's first name, from the saved profile (/api/line); the placeholder until it loads
 let OWNER = 'Sam';
 import { City } from './city3d.js';
@@ -250,7 +253,7 @@ function line(role, text) {
   clearEmpty();
   const by = role === 'rider' || role === 'caller' ? (live?.kind === 'delivery' ? 'Rider' : $('#callerName').textContent || 'Caller') : role === 'customer' ? `${OWNER}` : 'Varun';
   // callers share the rider's bubble (".caller" is the call card's class)
-  const m = el('div', 'msg ' + (role === 'caller' ? 'rider' : role), `<span class="by">${esc(by)}</span><div class="b">${esc(text)}</div>`);
+  const m = el('div', 'msg ' + (role === 'caller' ? 'rider' : role), `<span class="by">${esc(by)}</span><div class="b">${said(text)}</div>`);
   $('#stream').append(m); scroll();
   // a target the agent was told to send him to gets marked in the agent's next line
   if (role === 'agent' && pendingTarget) { markWords(m.querySelector('.b'), pendingTarget.label, 'target', pendingTarget.top); pendingTarget = null; }
@@ -306,7 +309,7 @@ function reasonFor(tool, out, args) {
   if (tool === 'save_fallback') return [`<b>If nobody opens</b> · ${esc(args?.if_no_answer || '')}`, 'ok'];
   if (tool === 'finish_calibration') return out.complete ? [`<b>Door path saved</b> · checked, no gaps`, 'ok'] : [`<b>Gaps</b> · ${esc((out.gaps || []).join('; '))}`, 'bad'];
   if (tool === 'next_instruction' || tool === 'rider_status') {
-    const heard = args?.seen ? `heard <b>"${esc(args.seen)}"</b>` : 'checked his position';
+    const heard = args?.seen ? `heard <b>"${said(args.seen)}"</b>` : 'checked his position';
     const step = say.match(/Next step \((\d+) of (\d+)\)/);
     const at = say.match(/He is (?:at|passing|near) "?([^".]+)"?/);
     const where = step ? `step ${step[1]} of ${step[2]}` : out.zone === 'far' ? 'far away · routing via a big landmark' : out.zone === 'door' ? 'at the door' : 'on the way';
@@ -856,7 +859,7 @@ function onLineTool(tool, out, args) {
     setLiveKind(out.kind);
     if (name) liveWho(name, null);
     liveRule(out.kind, out.budget);
-    liveStep(`heard <b>"${esc(args?.purpose || args?.org || '')}"</b> → ${esc(KLABEL[out.kind])}${out.budget ? ` · ${out.budget}s limit` : ''}`, out.kind === 'sales' ? 'bad' : 'ok');
+    liveStep(`heard <b>"${said(args?.purpose || args?.org || '')}"</b> → ${esc(KLABEL[out.kind])}${out.budget ? ` · ${out.budget}s limit` : ''}`, out.kind === 'sales' ? 'bad' : 'ok');
     const who = [args?.name, args?.org].filter(Boolean).join(', ') || showNum(live.number);
     if (out.kind !== 'delivery') status(`${who} — ${KLABEL[out.kind].toLowerCase()}${out.kind === 'sales' ? ', declining' : out.briefing ? ', on your briefing' : ''}`, true);
     if (out.briefing) showBrief(out.briefing);
@@ -975,12 +978,20 @@ function renderHistory() {
   for (const c of LINE.calls) {
     const t = new Date(c.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
     const who = c.name ? `${c.name}${c.org && c.org !== c.name ? ' · ' + c.org : ''}` : c.org || showNum(c.number);
-    const d = el('li', 'hist-row', `<div class="hist-top">${kchip(c.kind)}<b>${esc(who)}</b><span class="hist-when">${t}</span></div><p class="hist-sum">${esc(c.summary || c.outcome)}</p><div class="hist-steps">${(c.actions || []).map((a) => `<span>${esc(a)}</span>`).join('')}</div>`);
+    const d = el('li', 'hist-row', `<div class="hist-top">${kchip(c.kind)}<b>${esc(who)}</b><span class="hist-when">${t}</span></div><p class="hist-sum">${said(c.summary || c.outcome)}</p><div class="hist-steps">${(c.actions || []).map((a) => `<span>${esc(a)}</span>`).join('')}</div>`);
     box.append(d);
   }
 }
 
 function bindLine() {
+  // English letters (default) or हिंदी for what was said on calls; re-renders what is already on screen
+  const seg = $('#scriptSeg');
+  const paint = () => seg?.querySelectorAll('button').forEach((b) => { b.classList.toggle('on', b.dataset.s === script.mode); b.setAttribute('aria-pressed', b.dataset.s === script.mode); });
+  seg?.querySelectorAll('button').forEach((b) => (b.onclick = () => {
+    script.mode = b.dataset.s; localStorage.setItem('ttd-script', script.mode); paint();
+    document.querySelectorAll('[data-src]').forEach((n) => (n.textContent = shown(n.dataset.src)));
+  }));
+  paint();
 
   document.querySelectorAll('#modeSeg button').forEach((b) => (b.onclick = async () => { await post('/api/line/mode', { mode: b.dataset.mode }); loadLine(); }));
   $('#codeChip').onclick = () => { const c = $('#codeChip'); if (c.dataset.show) delete c.dataset.show; else c.dataset.show = '1'; renderLine(); };

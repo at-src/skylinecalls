@@ -1,0 +1,133 @@
+<!doctype html>
+<html><head><meta charset="utf-8" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500&family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; width: 1600px; height: 900px; overflow: hidden; background: #fbfbf9; font-family: Geist, sans-serif; color: #121211; }
+  svg { position: absolute; inset: 0; }
+  .cap { position: absolute; left: 0; right: 0; bottom: 56px; text-align: center; font: 500 34px/1.3 Geist, sans-serif; color: #2a2723; }
+  .big { position: absolute; left: 0; right: 0; text-align: center; font: 500 76px/1.08 "Playfair Display", serif; letter-spacing: -.02em; }
+  .big em { font-style: italic; color: #77736b; }
+  .mono { font: 500 20px "Geist Mono", monospace; letter-spacing: .1em; text-transform: uppercase; color: #8f8a81; }
+  .bubble { position: absolute; background: #fff; border: 2.5px solid #2a2723; border-radius: 22px 22px 22px 6px; padding: 14px 20px; font: 500 26px Geist, sans-serif; box-shadow: 0 10px 30px rgba(42,39,35,.12); white-space: nowrap; }
+  .bubble small { display: block; font: 500 15px "Geist Mono", monospace; letter-spacing: .08em; color: #8f8a81; text-transform: uppercase; margin-bottom: 4px; }
+  .tg { position: absolute; right: 120px; width: 560px; background: #effdde; border-radius: 18px; padding: 16px 20px; font: 400 23px/1.35 Geist, sans-serif; color: #1b2a12; box-shadow: 0 10px 30px rgba(42,39,35,.1); display: flex; gap: 14px; }
+  .tg i { flex: none; width: 38px; height: 38px; border-radius: 50%; background: #2aa4e3; display: grid; place-items: center; color: #fff; font-style: normal; font-size: 20px; }
+  .tg b { display: block; font: 500 14px "Geist Mono", monospace; letter-spacing: .08em; color: #5b7048; text-transform: uppercase; margin-bottom: 2px; }
+  .logo { position: absolute; display: flex; align-items: center; gap: 22px; font: 600 64px Geist, sans-serif; letter-spacing: -.03em; }
+  .mark { width: 84px; height: 84px; border-radius: 24px; background: #121211; display: grid; place-items: center; }
+  .pill { display: inline-block; background: #121211; color: #fff; border-radius: 999px; padding: 18px 34px; font: 600 30px Geist, sans-serif; }
+  #layer > * { will-change: transform, opacity; }
+</style></head>
+<body>
+<svg viewBox="0 0 1600 900" id="scene"></svg>
+<div id="layer"></div>
+<script>
+// Deterministic: the recorder calls render(t) for every frame. Scene times come from the narration (?T=json).
+const T = JSON.parse(decodeURIComponent(new URLSearchParams(location.search).get('T') || '{}'));
+const S = document.getElementById('scene'), L = document.getElementById('layer');
+const ease = (x) => x < 0 ? 0 : x > 1 ? 1 : 1 - Math.pow(1 - x, 3);
+const lerp = (a, b, k) => a + (b - a) * k;
+const at = (t, a, d = 0.5) => ease((t - a) / d);
+const INK = '#2a2723';
+
+// Sam, a stick figure at a desk. mood: 0 calm, 1 frustrated (hands on head). x,y: seat position
+function sam(t, mood, x = 560, y = 560, bounce = 0) {
+  const shake = mood > 0.6 ? Math.sin(t * 38) * 2.2 * mood : 0;
+  const hx = x + shake, hy = y - 250 + bounce;
+  const armL = mood > 0.5
+    ? `M${hx - 2} ${hy + 70} L${hx - 70} ${hy + 10} L${hx - 34} ${hy - 30}`
+    : `M${hx - 2} ${hy + 70} L${hx + 70} ${hy + 120} L${hx + 160} ${hy + 112}`;
+  const armR = mood > 0.5
+    ? `M${hx + 2} ${hy + 70} L${hx + 70} ${hy + 10} L${hx + 34} ${hy - 30}`
+    : `M${hx + 2} ${hy + 70} L${hx + 80} ${hy + 132} L${hx + 170} ${hy + 124}`;
+  const mouth = mood > 0.5
+    ? `M${hx - 14} ${hy + 22} Q${hx} ${hy + 12} ${hx + 14} ${hy + 22}`
+    : `M${hx - 14} ${hy + 14} Q${hx} ${hy + 26} ${hx + 14} ${hy + 14}`;
+  const brows = mood > 0.5 ? `<path d="M${hx - 22} ${hy - 16} L${hx - 8} ${hy - 10} M${hx + 22} ${hy - 16} L${hx + 8} ${hy - 10}" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>` : '';
+  const sweat = mood > 0.7 ? `<path d="M${hx + 44} ${hy - 20} q6 12 0 18 q-6 -6 0 -18z" fill="#7cc4f0" opacity="${0.6 + 0.4 * Math.sin(t * 6)}"/>` : '';
+  return `<g stroke="${INK}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M${x - 70} ${y + 10} L${x - 70} ${y + 170} M${x - 70} ${y + 10} L${x + 40} ${y + 10}"/>
+    <path d="M${hx} ${hy + 46} L${x} ${y}"/>
+    <path d="M${x} ${y} L${x + 90} ${y + 10} L${x + 90} ${y + 160}"/>
+    <path d="${armL}"/><path d="${armR}"/>
+    <circle cx="${hx}" cy="${hy}" r="44" fill="#fbfbf9"/>
+    <circle cx="${hx - 15}" cy="${hy - 4}" r="4" fill="${INK}" stroke="none"/><circle cx="${hx + 15}" cy="${hy - 4}" r="4" fill="${INK}" stroke="none"/>
+    <path d="${mouth}"/>${brows}${sweat}
+  </g>`;
+}
+function desk(extra = '') {
+  return `<g stroke="${INK}" stroke-width="6" stroke-linecap="round" fill="none">
+    <path d="M380 700 L1240 700"/><path d="M430 700 L430 840 M1190 700 L1190 840"/>
+    <path d="M690 700 L720 590 L880 590 L860 700" fill="#e9ecf1"/><path d="M660 700 L900 700"/>
+  </g>${extra}`;
+}
+// the phone on the desk, ringing (rings: 0..1)
+function phone(t, rings, x = 1010, y = 640) {
+  const wob = rings > 0 ? Math.sin(t * 46) * 7 * rings : 0;
+  const waves = rings > 0 ? [0, 1, 2].map((i) => { const ph = ((t * 1.8) + i / 3) % 1; return `<path d="M${x + 92 + ph * 40} ${y - 30 - ph * 22} q${18 + ph * 10} 34 0 ${68 + ph * 30}" stroke="${INK}" stroke-width="5" fill="none" stroke-linecap="round" opacity="${(1 - ph) * rings}"/><path d="M${x - 12 - ph * 40} ${y - 30 - ph * 22} q${-18 - ph * 10} 34 0 ${68 + ph * 30}" stroke="${INK}" stroke-width="5" fill="none" stroke-linecap="round" opacity="${(1 - ph) * rings}"/>`; }).join('') : '';
+  return `<g transform="rotate(${wob} ${x + 40} ${y + 30})"><rect x="${x}" y="${y - 30}" width="80" height="120" rx="14" fill="#1f1d1a" stroke="${INK}" stroke-width="5"/><rect x="${x + 8}" y="${y - 18}" width="64" height="88" rx="8" fill="${rings > 0 ? '#2fab6b' : '#fbfbf9'}"/></g>${waves}`;
+}
+function clock(t, k, x = 1180, y = 330) {
+  const a = t * 7;
+  return `<g opacity="${k}" stroke="${INK}" stroke-width="6" stroke-linecap="round" fill="#fff"><circle cx="${x}" cy="${y}" r="110"/>
+    <path d="M${x} ${y} L${x + Math.sin(a) * 78} ${y - Math.cos(a) * 78}" /><path d="M${x} ${y} L${x + Math.sin(a / 12) * 52} ${y - Math.cos(a / 12) * 52}"/></g>`;
+}
+function rabbit(x, y, s = 1) {
+  return `<g transform="translate(${x} ${y}) scale(${s})" stroke="${INK}" stroke-width="5" stroke-linejoin="round">
+    <path d="M-36 -150 c-12 -60 2 -104 20 -110 c16 12 14 64 -4 114z" fill="#cfd5df"/><path d="M4 -146 c8 -60 34 -98 52 -96 c8 18 -10 66 -36 104z" fill="#cfd5df"/>
+    <ellipse cx="-10" cy="-40" rx="86" ry="66" fill="#d9dee6"/><ellipse cx="0" cy="-110" rx="56" ry="48" fill="#e2e6ec"/>
+    <path d="M-24 -112 q10 7 20 0 M16 -112 q10 7 20 0" fill="none" stroke-linecap="round"/>
+    <path d="M-56 -112 c0 -48 26 -74 56 -74 s56 26 56 74" fill="none" stroke-width="7"/><rect x="-66" y="-122" width="20" height="32" rx="9" fill="${INK}"/><rect x="46" y="-122" width="20" height="32" rx="9" fill="${INK}"/>
+    <path d="M-56 -94 c-2 26 16 36 40 34" fill="none" stroke-linecap="round"/><circle cx="-14" cy="-60" r="6" fill="${INK}"/></g>`;
+}
+const box = (html, style) => `<div style="${style}">${html}</div>`;
+const bubble = (who, text, x, y, k) => box(`<small>${who}</small>${text}`, `position:absolute;left:${x}px;top:${y + (1 - k) * 24}px;opacity:${k};transform:scale(${0.92 + 0.08 * k})`).replace('<div', '<div class="bubble"');
+const tg = (text, y, k) => `<div class="tg" style="top:${y + (1 - k) * 30}px;opacity:${k}"><i>➤</i><span><b>Telegram from Varun</b>${text}</span></div>`;
+const LOGO = `<span class="mark"><svg viewBox="0 0 24 24" width="50" height="50" style="position:static"><path d="M5 19v-6M10 19V8M15 19v-9M20 19V5" stroke="#fff" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg></span><span>Skyline Calls</span>`;
+
+window.render = function (t) {
+  let svg = '', html = '';
+  const s = T; // scene starts, seconds
+  if (t < s.meet) {
+    // ---- the problem: Sam at his desk, the phone won't stop ----
+    const ring = t > s.rings ? 1 : 0;
+    const mood = t < s.rings ? 0 : Math.min(1, (t - s.rings) / 3.5);
+    svg += desk() + sam(t, mood) + phone(t, ring);
+    if (t > s.sam && t < s.rings) html += `<div class="big" style="top:110px;opacity:${at(t, s.sam)}">This is <em>Sam.</em></div>`;
+    const calls = [['Loan offer', '"Sir, pre-approved loan, sirf 2 minute…"'], ['Zepto rider', '"Bhaiya, building kahan hai?"'], ['"SBI"', '"KYC expired, OTP bata dijiye"'], ['Insurance', '"Renewal due hai sir…"'], ['Unknown', '"Sir, ek survey hai…"'], ['Loan offer', '"Credit card upgrade, sir!"']];
+    if (t > s.rings && t < s.hours) {
+      const per = (s.hours - s.rings) / calls.length;
+      calls.forEach(([w, x], i) => { const a = s.rings + i * per; const k = at(t, a, 0.35) * (1 - at(t, a + per * 2.2, 0.4)); if (k > 0.01) html += bubble(w, x, [880, 1060, 860, 1080, 900, 1040][i], [150, 270, 390, 160, 300, 420][i], k); });
+      const n = Math.min(23, Math.floor(((t - s.rings) / (s.hours - s.rings)) * 23) + 1);
+      html += `<div class="mono" style="position:absolute;left:120px;top:110px;font-size:26px">Calls today</div><div style="position:absolute;left:116px;top:144px;font:500 110px 'Playfair Display',serif">${n}</div>`;
+    }
+    if (t > s.hours) {
+      const k = at(t, s.hours);
+      svg += clock(t, k);
+      html += `<div class="big" style="top:100px;opacity:${k}">Nearly <em>2 hours a day.</em></div><div class="cap" style="opacity:${at(t, s.hours + 1.6)}">Most of those calls didn't need him.</div>`;
+    }
+  } else if (t < s.outro) {
+    // ---- the answer: Varun picks up ----
+    const k = at(t, s.meet, 0.6);
+    svg += desk() + sam(t, Math.max(0, 1 - (t - s.meet) / 1.5)) + phone(t, t < s.meet + 1.4 ? 1 : 0);
+    svg += `<g opacity="${k}">${rabbit(1140, 640 + (1 - k) * 60, 0.95)}</g>`;
+    html += `<div class="logo" style="left:120px;top:110px;opacity:${at(t, s.meet + 0.6)}">${LOGO}</div>`;
+    html += `<div class="cap" style="opacity:${at(t, s.meet + 1.4)}">Meet Varun. He picks up Sam's calls.</div>`;
+  } else {
+    // ---- outro: Sam works in peace, one line per call on Telegram ----
+    svg += desk() + sam(t, 0, 520, 560, Math.sin(t * 2) * 2);
+    const lines = ['🚫 Loan pitch, declined in 14s. Blocked.', '⚠️ Likely scam: KYC + OTP. Shared nothing.', '📦 Zepto rider guided to your door.', '💬 Rohit: cricket tomorrow at 5 pm.'];
+    lines.forEach((x, i) => { const k = at(t, s.outro + 0.4 + i * 0.9, 0.4) * (t > s.card ? 1 - at(t, s.card, 0.5) : 1); html += tg(x, 140 + i * 128, k); });
+    if (t > s.card) {
+      const k = at(t, s.card, 0.6);
+      html += `<div style="position:absolute;inset:0;background:#fbfbf9;opacity:${k}"></div>`;
+      html += `<div class="logo" style="left:50%;top:250px;transform:translateX(-50%);opacity:${k}">${LOGO}</div>`;
+      html += `<div class="big" style="top:420px;font-size:54px;opacity:${k}">Your phone rings. <em>Your agent picks up.</em></div>`;
+      html += `<div style="position:absolute;left:0;right:0;top:560px;text-align:center;opacity:${at(t, s.card + 0.8, 0.5)}"><span class="pill">skylinecalls.vercel.app</span><div class="mono" style="margin-top:28px">Powered by Bolna · open source</div></div>`;
+    }
+  }
+  S.innerHTML = svg; L.innerHTML = html;
+};
+window.render(0);
+</script>
+</body></html>

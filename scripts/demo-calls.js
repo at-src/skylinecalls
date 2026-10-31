@@ -7,7 +7,7 @@
 // Usage: node scripts/demo-calls.js [scenario ...]      -> C:/Users/at261/ttd-tools/calls/<id>/
 import '../src/env.js';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 const puppeteer = createRequire(process.env.PUPPETEER_PKG || 'C:/Users/at261/parkwise-backup/package.json')('puppeteer-core');
@@ -74,12 +74,17 @@ function timeline(id, sc, files) {
   const dir = join(OUT, id), out = join(dir, 'mic.wav');
   const gaps = sc.lines.map((_, i) => (sc.gaps && sc.gaps[i]) || 9);
   const ins = [], parts = [];
-  ins.push('-f', 'lavfi', '-t', '5', '-i', 'anullsrc=r=24000:cl=mono'); parts.push('[0:a]');
+  // the call connects a few seconds after the microphone opens; start talking well after that
+  const LEAD = 10;
+  ins.push('-f', 'lavfi', '-t', String(LEAD), '-i', 'anullsrc=r=24000:cl=mono'); parts.push('[0:a]');
   files.forEach((f, i) => { ins.push('-i', f); parts.push(`[${ins.filter((x) => x === '-i').length - 1}:a]`);
     ins.push('-f', 'lavfi', '-t', String(gaps[i]), '-i', 'anullsrc=r=24000:cl=mono'); parts.push(`[${ins.filter((x) => x === '-i').length - 1}:a]`); });
   execFileSync(FF, ['-y', '-loglevel', 'error', ...ins, '-filter_complex', `${parts.join('')}concat=n=${parts.length}:v=0:a=1`, '-ar', '24000', '-ac', '1', '-c:a', 'pcm_s16le', out]);
   const dur = (() => { try { execFileSync(FF, ['-i', out], { stdio: 'pipe' }); } catch (e) { const m = String(e.stderr).match(/Duration: (\d+):(\d+):([\d.]+)/); return m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : 60; } return 60; })();
-  return { out, dur };
+  // when each line starts on the microphone timeline
+  const lens = files.map((f) => { const o = String(spawnSync(FF, ['-i', f], { encoding: 'utf8' }).stderr || '').match(/Duration: (\d+):(\d+):([\d.]+)/); return o ? +o[1] * 3600 + +o[2] * 60 + +o[3] : 3; });
+  const starts = []; let t = LEAD; lens.forEach((l, i) => { starts.push(t); t += l + gaps[i]; });
+  return { out, dur, starts, lens };
 }
 async function run(id) {
   const sc = SCENARIOS[id]; const dir = join(OUT, id);
@@ -108,7 +113,7 @@ async function run(id) {
   await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 72, everyNthFrame: 1 });
   await wait(1500);
   const clickAt = Date.now();
-  await p.click('#talkBtn');
+  await p.evaluate(() => document.getElementById('talkBtn').click());
   // the fake microphone starts when the call opens it; give it the whole timeline plus Varun's last reply
   await p.waitForFunction(() => /hang/i.test(document.querySelector('#talkBtn span')?.textContent || ''), { timeout: 30000 }).catch(() => console.log(id, 'call did not start'));
   const startAt = Date.now();
@@ -117,13 +122,13 @@ async function run(id) {
     const ended = await p.evaluate((since) => fetch('/api/state').then((r) => r.json()).then((s) => s.events.some((e) => e.type === 'line.ended' && Date.parse(e.t) > since)), clickAt).catch(() => false);
     if (ended) { await wait(5500); break; }
   }
-  if (/hang/i.test(await p.evaluate(() => document.querySelector('#talkBtn span')?.textContent || ''))) await p.click('#talkBtn');
+  if (/hang/i.test(await p.evaluate(() => document.querySelector('#talkBtn span')?.textContent || ''))) await p.evaluate(() => document.getElementById('talkBtn').click());
   const endAt = Date.now();
   await wait(9000); // the summary lands on Telegram after the call ends
   await cdp.send('Page.stopScreencast');
   const events = await p.evaluate(() => fetch('/api/state').then((r) => r.json()).then((s) => s.events));
   await b.close();
-  writeFileSync(join(dir, 'meta.json'), JSON.stringify({ id, runId, clickAt, sessionAt, startAt, endAt, micDur: mic.dur, lines: sc.lines, frames, events: events.filter((e) => Date.parse(e.t) >= clickAt - 3000) }, null, 1));
+  writeFileSync(join(dir, 'meta.json'), JSON.stringify({ id, runId, clickAt, sessionAt, startAt, endAt, micDur: mic.dur, lineStarts: mic.starts, lineLens: mic.lens, lines: sc.lines, frames, events: events.filter((e) => Date.parse(e.t) >= clickAt - 3000) }, null, 1));
   for (let k = 0; k < 40; k++) {
     await wait(4000);
     const e = await (await fetch(`https://api.bolna.ai/executions/${runId}`, { headers: { Authorization: `Bearer ${BOLNA}` } })).json();
@@ -141,6 +146,8 @@ async function run(id) {
   console.log(id, 'recording not ready');
 }
 
+if (process.argv[1] && process.argv[1].endsWith('demo-calls.js')) {
 const list = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SCENARIOS);
 for (const id of list) { try { await run(id); } catch (e) { console.log(id, 'FAILED', e.message); } await wait(6000); }
 process.exit(0);
+}
