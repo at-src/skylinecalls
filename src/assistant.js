@@ -241,6 +241,8 @@ export function classifyCaller({ caller_number, name, org, purpose, guess, visit
   const c = current(caller_number);
   const known = c.spoofed ? null : people()[c.number];
   let kind = known && known.kind !== 'unknown' ? known.kind : sortCaller({ name, org, purpose, guess });
+  // a caller the owner left a briefing about (the insurance renewal he's expecting) is business, not a sales pitch
+  if (kind === 'sales' && briefingFor({ number: c.number, name, org, purpose })) kind = 'service';
   // a number that isn't saved can't become family, a VIP or a known contact on its own say-so (or the model's guess)
   let claimed = '';
   if ((!known || known.kind === 'unknown') && G.PRIVILEGED_KINDS.has(kind)) { claimed = kind; kind = 'unknown'; c.actions.push('claimed to be ' + KIND_LABEL[claimed].toLowerCase() + ': not on file'); }

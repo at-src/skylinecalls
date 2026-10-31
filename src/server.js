@@ -273,7 +273,9 @@ const routes = {
     if (env.ALLOW_CALLS !== '1' || !env.BOLNA_LINE_AGENT_ID) return { error: 'web calls are off' };
     const ip = String(req?.headers['x-forwarded-for'] || req?.socket?.remoteAddress || '').split(',')[0];
     const now = Date.now(), recent = (mints.get(ip) || []).filter((t) => now - t < 3600e3);
-    if (recent.length >= 8 || now - lastMint < 15000) return { error: 'The line is busy. Try again in a minute.' };
+    // the public may open 8 calls an hour per IP; the owner (testing, recording the demo) only waits between calls
+    const owner = G.isOwner(req);
+    if ((!owner && recent.length >= 8) || now - lastMint < (owner ? 5000 : 15000)) return { error: 'The line is busy. Try again in a minute.' };
     mints.set(ip, [...recent, now]); lastMint = now;
     const u = b.user_data || {};
     // a visitor can't pick whose number they call from; only the owner may test as a saved contact

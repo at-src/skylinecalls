@@ -18,7 +18,8 @@ const api = async (path, opts = {}) => {
   return j;
 };
 
-const VOICE = { provider: 'cartesia', model: 'sonic-3', voice: 'Varun', voice_id: '4cd9f881-58f7-4969-876a-00983214c362', language: 'hi' };
+// ElevenLabs "Raju - Top Customer Care Voice" (young, conversational Hindi; the most-used of its kind), through Bolna
+const VOICE = { provider: 'elevenlabs', model: 'eleven_turbo_v2_5', voice: 'Raju - Top Customer Care Voice', voice_id: 'eyVoIoi3vo6sJoHOKgAc', language: 'hi' };
 
 // ---------- tools ----------
 const S = (description) => ({ type: 'string', description });
@@ -106,7 +107,7 @@ const agentBody = ({ name, welcome, prompt, tools, terminate = 600 }) => ({
           agent_type: 'simple_llm_agent', agent_flow_type: 'streaming',
           llm_config: { provider: 'openai', family: 'openai', model: 'gpt-4.1-mini', temperature: 0.3, max_tokens: 120, agent_flow_type: 'streaming' },
         },
-        synthesizer: { stream: true, provider: VOICE.provider, buffer_size: 150, audio_format: 'wav', provider_config: { model: VOICE.model, voice: VOICE.voice, voice_id: VOICE.voice_id, language: VOICE.language } },
+        synthesizer: { stream: true, provider: VOICE.provider, buffer_size: 150, audio_format: 'wav', provider_config: { model: VOICE.model, voice: VOICE.voice, voice_id: VOICE.voice_id, language: VOICE.language, ...(VOICE.provider === 'elevenlabs' ? { speed: 1.12, temperature: 0.6 } : {}) } },
         transcriber: { provider: 'elevenlabs', model: 'scribe_v2_realtime', language: 'hi', stream: true, encoding: 'linear16', sampling_rate: 16000, endpointing: 250, keywords: KEYWORDS.join(', ') },
         ...(tools ? { api_tools: tools } : {}),
       },

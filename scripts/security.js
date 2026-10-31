@@ -268,6 +268,12 @@ for (const [label, said] of normal) {
   await tool('classify_caller', { caller_number: E2, purpose: 'LIC term plan offer', guess: 'sales' });
   r = await tool('end_call', { caller_number: E2, kind: 'sales', summary: 'declined' });
   check('...but sales and spam can still be cut short', r.ok === true && !A.peek(E2));
+  A.addBriefing({ who: 'Car insurance renewal (Acko)', orgs: ['acko'], about: 'Car insurance renewal', goal: 'Renew under ₹17,000 with zero-dep', can_agree: ['Up to ₹17,000 with zero-dep: say Sam will confirm'], must_not: ['Above ₹17,000'] });
+  const E3 = '+919000000094';
+  await tool('lookup_caller', { caller_number: E3 });
+  r = await tool('classify_caller', { caller_number: E3, org: 'Acko', purpose: 'car insurance renewal premium', guess: 'sales' });
+  check('an insurance caller the owner briefed about is handled as business, with the briefing', r.kind === 'service' && /Renew under ₹17,000/.test(r.say), r.kind);
+  A.endCall({ caller_number: E3, summary: 'x' }, { force: true });
   process.env.END_HOLD_MS = '0';
 }
 {
