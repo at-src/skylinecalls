@@ -92,9 +92,9 @@ const agentBody = ({ name, welcome, prompt, tools, terminate = 600 }) => ({
       task_type: 'conversation',
       toolchain: { execution: 'parallel', pipelines: [['transcriber', 'llm', 'synthesizer']] },
       task_config: {
-        hangup_after_silence: 15, call_terminate: terminate, optimize_latency: true, number_of_words_for_interruption: 2, incremental_delay: 400, backchanneling: false, use_fillers: false,
+        hangup_after_silence: 22, call_terminate: terminate, optimize_latency: true, number_of_words_for_interruption: 2, incremental_delay: 400, backchanneling: false, use_fillers: false,
         // in Hinglish, like the rest of the call (Bolna's default is an English "Hey, are you still there")
-        check_if_user_online: true, check_user_online_message: 'Hello? Aap line pe hain?', trigger_user_online_message_after: 10,
+        check_if_user_online: true, check_user_online_message: 'Hello? Aap line pe hain?', trigger_user_online_message_after: 14,
         // hang up on a real goodbye (Bolna checks this prompt after the caller speaks). Mid-call "haan"/"theek hai" must
         // not end it, and if the caller cuts into the goodbye with something new, the hangup is cancelled.
         hangup_after_LLMCall: true, interruptible_hangup_message: true, call_cancellation_prompt: HANGUP_PROMPT,
@@ -108,7 +108,7 @@ const agentBody = ({ name, welcome, prompt, tools, terminate = 600 }) => ({
           llm_config: { provider: 'openai', family: 'openai', model: 'gpt-4.1-mini', temperature: 0.3, max_tokens: 120, agent_flow_type: 'streaming' },
         },
         synthesizer: { stream: true, provider: VOICE.provider, buffer_size: 150, audio_format: 'wav', provider_config: { model: VOICE.model, voice: VOICE.voice, voice_id: VOICE.voice_id, language: VOICE.language, ...(VOICE.provider === 'elevenlabs' ? { speed: 1.12, temperature: 0.6 } : {}) } },
-        transcriber: { provider: 'elevenlabs', model: 'scribe_v2_realtime', language: 'hi', stream: true, encoding: 'linear16', sampling_rate: 16000, endpointing: 250, keywords: KEYWORDS.join(', ') },
+        transcriber: { provider: 'elevenlabs', model: 'scribe_v2_realtime', language: 'hi', stream: true, encoding: 'linear16', sampling_rate: 16000, endpointing: 450, keywords: KEYWORDS.join(', ') },
         ...(tools ? { api_tools: tools } : {}),
       },
     }],

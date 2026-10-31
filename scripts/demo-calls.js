@@ -30,8 +30,8 @@ export const SCENARIOS = {
     lines: ['Haan beta, Sam kahan hai? Phone hi nahi utha raha.', 'Achha, usko bolna aaj raat dinner pe aa jaye, aath baje. Rajma banaya hai.', 'Theek hai beta, bye.'] },
   rider: { as: 'new', voice: 'ash', place: 'street', how: 'A young Indian delivery rider on a scooter, on a noisy street, in a hurry. Casual Hinglish, quick, a little out of breath, friendly.',
     setup: async (page) => page.evaluate(() => fetch('/api/message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'expecting Zepto in 30 mins' }) }).then((r) => r.json())),
-    gaps: [11, 9, 9, 9, 6],
-    lines: ['Haan bhaiya, Zepto delivery. Main BDA Complex ke gate pe hoon.', 'Haan, McDonald\'s dikh gaya.', 'Haan, blue gate pe aa gaya.', 'Seedhi pe hoon, upar aa raha hoon.', 'Mil gaya, thank you bhaiya.'] },
+    gaps: [8, 9, 9, 9, 9, 6],
+    lines: ['Zepto delivery hai bhaiya, aapka order hai.', 'Main BDA Complex ke gate pe hoon.', 'Haan, McDonald\'s dikh gaya.', 'Blue gate pe aa gaya.', 'Seedhi pe hoon, upar aa raha hoon.', 'Mil gaya, thank you bhaiya.'] },
   renewal: { as: 'new', voice: 'verse', place: 'office', how: 'An Indian insurance renewal agent on a call. Polite, practised sales tone, Hinglish, reads numbers clearly.',
     setup: async (page) => page.evaluate(() => fetch('/api/briefings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ who: 'Car insurance renewal (Acko)', orgs: ['acko'], names: [], about: 'Renewal of Sam\'s car insurance. Last year he paid ₹16,500 with zero-dep cover.', goal: 'Renew for ₹17,000 or less, with zero-dep included.', can_agree: ['Up to ₹17,000 including zero-dep: say Sam will confirm on Telegram'], must_not: ['Anything above ₹17,000', 'Dropping zero-dep'], private: [] }) }).then((r) => r.json())),
     gaps: [13, 13, 10, 6],
@@ -112,7 +112,11 @@ async function run(id) {
   // the fake microphone starts when the call opens it; give it the whole timeline plus Varun's last reply
   await p.waitForFunction(() => /hang/i.test(document.querySelector('#talkBtn span')?.textContent || ''), { timeout: 30000 }).catch(() => console.log(id, 'call did not start'));
   const startAt = Date.now();
-  await wait((mic.dur + 3) * 1000);
+  for (let t = 0; t < (mic.dur + 3) * 1000; t += 1000) {
+    await wait(1000);
+    const ended = await p.evaluate((since) => fetch('/api/state').then((r) => r.json()).then((s) => s.events.some((e) => e.type === 'line.ended' && Date.parse(e.t) > since)), clickAt).catch(() => false);
+    if (ended) { await wait(5500); break; }
+  }
   if (/hang/i.test(await p.evaluate(() => document.querySelector('#talkBtn span')?.textContent || ''))) await p.click('#talkBtn');
   const endAt = Date.now();
   await wait(9000); // the summary lands on Telegram after the call ends

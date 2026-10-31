@@ -6,7 +6,7 @@
 //      cut out of both  ->  C:/Users/at261/ttd-tools/calls/<id>/segment.mp4
 // Usage: node scripts/demo-process.js [id ...]
 import '../src/env.js';
-import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 const IN = process.env.OUT || 'C:/Users/at261/ttd-tools/calls';
@@ -87,6 +87,7 @@ async function processCall(id) {
   }
   // cut each turn (a little padding), Varun's fillers kept but the gap inside his turn capped
   const outDir = join(FRONT, 'audio'); mkdirSync(outDir, { recursive: true });
+  for (const x of readdirSync(outDir)) if (x.startsWith(id + '-') && x.endsWith('.mp3')) rmSync(join(outDir, x));
   const lines = []; let n = 0;
   const clipOf = (t, name) => {
     const [a, b] = t.s, f = join(outDir, `${name}.mp3`);
@@ -101,10 +102,16 @@ async function processCall(id) {
   let ti = 0;
   for (const t of kept) {
     while (ti < tools.length && tools[ti].t < t.s[0] + 0.3) { if (lines.at(-1)?.[1] !== tools[ti].label) lines.push(['tool', tools[ti].label]); ti++; }
-    const name = `${id}-${n++}`;
+    const name = `${id}-${n}`;
     const f = clipOf(t, name);
-    const text = t.who === 'caller' ? meta.lines[t.i] ?? await romanise(await transcribe(f)) : await romanise(await transcribe(f));
-    lines.push([t.who, text]);
+    // a turn that was only noise cuts to nothing; drop it
+    if (statSync(f).size < 3000) { rmSync(f); continue; }
+    let heard = '';
+    try { heard = await transcribe(f); } catch { rmSync(f); continue; }
+    if (!heard || heard.length < 2) { rmSync(f); continue; }
+    n++;
+    lines.push([t.who, await romanise(heard)]);
+    console.log(' ', name, t.who, t.s.map((x) => x.toFixed(1)).join('-'), heard.slice(0, 60));
   }
   while (ti < tools.length) { if (lines.at(-1)?.[1] !== tools[ti].label) lines.push(['tool', tools[ti].label]); ti++; }
   const telegram = tg.filter((x) => !/is on the line|Got it|expecting/i.test(x)).at(-1) || tg.at(-1) || '';

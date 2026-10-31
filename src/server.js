@@ -283,7 +283,7 @@ const routes = {
     G.expectCaller(number);
     const r = await fetch('https://api.bolna.ai/web-call/freeswitch-session', {
       method: 'POST', headers: { Authorization: `Bearer ${env.BOLNA_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent_id: env.BOLNA_LINE_AGENT_ID, user_data: { owner: A.profile().owner, caller_number: number, customer_name: A.profile().owner, visit_id: '' } }),
+      body: JSON.stringify({ agent_id: env.BOLNA_LINE_AGENT_ID, user_data: { owner: A.profile().owner, caller_number: number, caller_context: A.callerContext(number), customer_name: A.profile().owner, visit_id: '' } }),
     });
     const j = await r.json();
     if (!r.ok || !j.run_id) return { error: 'Could not open the line right now.' };
@@ -418,9 +418,13 @@ function followCall(visit, execution, userRole = 'rider', number = '') {
 export async function runTool(name, raw) {
   const args = G.capArgs(raw);
   emit('tool.call', { tool: name, args });
+  // the model skipped lookup_caller: do it now, so a saved contact is still known and the call is logged properly
+  let looked = null;
+  if (LINE_TOOLS.has(name) && !['lookup_caller', 'end_call'].includes(name) && val(args.caller_number) && !A.peek(val(args.caller_number))) looked = A.lookupCaller({ caller_number: val(args.caller_number) });
   let check = null;
   if (LINE_TOOLS.has(name)) check = A.screen(val(args.caller_number), CALLER_WORDS.map((k) => val(args[k])));
   const out = await TOOLS[name](args);
+  if (looked && out && typeof out === 'object' && name !== 'end_call') out.say = `CALLER: ${looked.say} ${out.say || ''}`.trim();
   if (check?.warn && out && typeof out === 'object') { out.say = `${check.warn} ${out.say || ''}`.trim(); out.security = check.flags.map((f) => f.id); }
   emit('tool.result', { tool: name, out });
   return out;

@@ -137,7 +137,7 @@ async function runCall(sc, i) {
   const num = sc.num || fresh(i);
   G.expectCaller(num); // as /api/webcall/session does for a real call
   const ev = []; const grab = (e) => ev.push(e); bus.on('event', grab); // (recentEvents() is a capped ring; listen instead)
-  const system = LINE_PROMPT.replaceAll('{owner}', A.profile().owner).replaceAll('{caller_number}', num);
+  const system = LINE_PROMPT.replaceAll('{owner}', A.profile().owner).replaceAll('{caller_number}', num).replaceAll('{caller_context}', A.callerContext(num));
   const messages = [{ role: 'system', content: system }, { role: 'assistant', content: LINE_WELCOME }];
   const tools = openaiTools(), log = [{ who: 'Varun', text: LINE_WELCOME }], used = [];
   let ended = false;

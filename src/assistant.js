@@ -171,6 +171,16 @@ function current(number) {
   return live.get(n);
 }
 
+// One line about the caller, for the agent's prompt before the call connects (so it greets Mom as Mom from the first
+// word). Server-generated from the people list; never from anything the caller says.
+export function callerContext(number) {
+  const n = normNumber(number);
+  const p = n && people()[n];
+  if (!p || p.kind === 'unknown') return `An unknown number, not in ${ownerName()}'s contacts. Ask who they are and what it is about.`;
+  if (p.kind === 'blocked') return `A blocked number (${p.note || 'spam'}). Say only "Not interested, please don't call again" and end the call.`;
+  return `${p.name}, ${ownerName()}'s ${p.relation || KIND_LABEL[p.kind].toLowerCase()} (${KIND_LABEL[p.kind]}). Greet them by name and never ask who they are.`;
+}
+
 // ---------- security on the live call ----------
 // Scan what the caller said (tool arguments the model filled from speech, or live transcript lines). New threats are
 // added to the call; the first severe one alerts the owner once. Returns the warning to prepend to the tool's note.
