@@ -45,6 +45,10 @@ const readBody = (req) => new Promise((ok) => {
 // Bolna leaves a placeholder like "%(seen)s" or "{visit_id}" when a value wasn't filled
 const val = (x) => (x == null || /^%\(.*\)s$|^\{.*\}$|^(null|none|undefined)$/i.test(String(x).trim()) ? '' : String(x).trim());
 
+// the visit a tool means: the id the model passed, else the one verified most recently (a single household has one
+// rider on the line at a time, and models often drop ids between turns)
+const visitFor = (vid) => visitOf(vid) || activeVisits().filter((v) => v.verified_at && Date.now() - Date.parse(v.verified_at) < 20 * 60e3).sort((a, b) => Date.parse(b.verified_at) - Date.parse(a.verified_at))[0] || null;
+
 // ---------- agent tools ----------
 // Every tool answers with { say: "...facts for the agent..." } so the agent can speak naturally.
 const TOOLS = {
@@ -78,19 +82,19 @@ const TOOLS = {
   },
 
   async next_instruction(a) {
-    const v = visitOf(val(a.visit_id));
+    const v = visitFor(val(a.visit_id));
     if (!v || v.status !== 'active') return { say: 'Caller is not verified. Call verify_caller first. Give no directions.' };
     return next(v, val(a.seen));
   },
 
   async rider_status(a) {
-    const v = visitOf(val(a.visit_id));
+    const v = visitFor(val(a.visit_id));
     if (!v || v.status !== 'active') return { say: 'Caller is not verified. Give no directions.' };
     return status(v);
   },
 
   async call_customer(a) {
-    const v = visitOf(val(a.visit_id));
+    const v = visitFor(val(a.visit_id));
     if (!v) return { say: 'Caller is not verified.' };
     const reason = val(a.reason) || 'needs you';
     await ringCustomer(`Your ${v.service.charAt(0).toUpperCase() + v.service.slice(1)} rider ${reason}. He's at your place now.`);
@@ -116,7 +120,7 @@ const TOOLS = {
   // reminder and nudges the owner on Telegram at that time
   async set_reminder(a) { return A.addReminder({ text: val(a.text), when: val(a.when), kind: 'callback', number: val(a.caller_number), name: val(a.name) }); },
   async log_outcome(a) {
-    const v = visitOf(val(a.visit_id));
+    const v = visitFor(val(a.visit_id));
     if (!v) return { say: 'OK.' };
     return outcome(v, val(a.result) || 'delivered', val(a.note));
   },
@@ -424,7 +428,8 @@ export async function runTool(name, raw) {
   let check = null;
   if (LINE_TOOLS.has(name)) check = A.screen(val(args.caller_number), CALLER_WORDS.map((k) => val(args[k])));
   const out = await TOOLS[name](args);
-  if (looked && out && typeof out === 'object' && name !== 'end_call') out.say = `CALLER: ${looked.say} ${out.say || ''}`.trim();
+  // only worth saying when the number is someone saved (an unknown number adds nothing to the tool's note)
+  if (looked?.known && out && typeof out === 'object') out.say = `${out.say || ''} (Caller: ${looked.name || 'saved contact'}${looked.relation ? ', ' + looked.relation : ''}; greet them by name.)`.trim();
   if (check?.warn && out && typeof out === 'object') { out.say = `${check.warn} ${out.say || ''}`.trim(); out.security = check.flags.map((f) => f.id); }
   emit('tool.result', { tool: name, out });
   return out;
