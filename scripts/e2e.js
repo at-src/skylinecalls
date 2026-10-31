@@ -41,19 +41,25 @@ check('Telegram approval request was raised', recentEvents().some((e) => e.type 
 
 console.log('\n== 2. Customer tells the bot: "I have an order with Zepto"');
 const reply = handleText('I have an order with Zepto');
-check('bot confirms and gives a code', /expecting Zepto/i.test(reply) && /code: \d{4}/.test(reply), reply.split('\n')[0]);
-const code = reply.match(/code: (\d{4})/)[1];
-const visits = (await (await fetch(base + '/api/state')).json()).visits;
+check('bot says ok with the default 30 min window, no code', /expecting Zepto in the next 30 min/i.test(reply) && !/code/i.test(reply), reply.split('\n')[0]);
+let visits = (await (await fetch(base + '/api/state')).json()).visits;
 const visit = visits.find((v) => v.service === 'zepto');
-check('visit is active', !!visit);
+check('visit is active for about 30 minutes', !!visit && Math.abs(Date.parse(visit.expires) - Date.now() - 30 * 60e3) < 90e3);
+const late = handleText('Zepto in 50 mins');
+visits = (await (await fetch(base + '/api/state')).json()).visits;
+check('"Zepto in 50 mins" moves the same window, no second order', /next 50 min/.test(late) && visits.filter((v) => v.service === 'zepto').length === 1 && Math.abs(Date.parse(visits.find((v) => v.service === 'zepto').expires) - Date.now() - 50 * 60e3) < 90e3, late.split('\n')[0]);
+handleText('expecting an Amazon parcel in 2 hours');
+visits = (await (await fetch(base + '/api/state')).json()).visits;
+const amz = visits.find((v) => v.service === 'amazon');
+check('"in 2 hours" sets a 2 hour window', !!amz && Math.abs(Date.parse(amz.expires) - Date.now() - 120 * 60e3) < 90e3);
 
-console.log('\n== 3. Rider calls: says Zepto but wrong code, then right code');
+console.log('\n== 3. Rider calls: says which service; no code is ever asked');
+r = await tool('verify_caller', { service: '' });
+check('no service said -> ask which app, no directions', r.verified === false && r.need === 'service' && noDirections(r), say(r));
+r = await tool('verify_caller', { service: 'swiggy' });
+check('a service nobody expects -> ask the customer, no directions', r.verified === false && r.need === 'customer' && /ask_customer/.test(r.say) && noDirections(r), say(r));
 r = await tool('verify_caller', { service: 'zepto' });
-check('unconfirmed -> ask the customer, never asks for a code', r.need === 'customer' && /ask_customer/.test(r.say) && /Do not ask him for any code/.test(r.say), say(r));
-r = await tool('verify_caller', { service: 'zepto', code: '0000' });
-check('wrong code refused', r.verified === false, say(r));
-r = await tool('verify_caller', { service: 'zepto', code });
-check('right code verified', r.verified === true && r.visit_id === visit.id);
+check('the expected service inside the window -> verified', r.verified === true && r.visit_id === visit.id, say(r));
 const vid = r.visit_id;
 
 console.log('\n== 4. Rider is ~1.7 km away (Agara) and took a wrong turn');

@@ -23,8 +23,8 @@ const VOICE = { provider: 'cartesia', model: 'sonic-3', voice: 'Varun', voice_id
 // ---------- tools ----------
 const S = (description) => ({ type: 'string', description });
 const TOOL_DEFS = [
-  ['verify_caller', 'Check who the caller is before giving ANY direction. Call it as soon as he says which service he is from (and again if he gives a delivery code).',
-    { visit_id: S('The visit id given in the call context, if any. Leave empty if none.'), service: S('Service he says he is from, e.g. zepto, swiggy, amazon, uber, rapido'), code: S('4-digit delivery code if he gave one') }, ['service']],
+  ['verify_caller', 'Check who the caller is before giving ANY direction. Call it as soon as he says which service he is from. Never ask him for a code.',
+    { visit_id: S('The visit id given in the call context, if any. Leave empty if none.'), service: S('Service he says he is from, e.g. zepto, swiggy, amazon, uber, rapido') }, ['service']],
   ['ask_customer', 'Ask the family on their phone whether to help an unknown caller. Use when verify_caller cannot verify him.',
     { caller_says: S('Who he says he is, in his words, e.g. "Zepto delivery, order for Sam"') }, ['caller_says']],
   ['check_approval', 'Check whether the family answered an ask_customer request.',

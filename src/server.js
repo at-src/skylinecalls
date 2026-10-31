@@ -221,7 +221,7 @@ const routes = {
     const v = createVisit({ service: detectService(b.service) || 'zepto', source: 'demo' });
     await planRide(v.id, { from: { lat: 12.9231, lng: 77.6510 }, via: b.wrong_turn === false ? null : { lat: 12.9205, lng: 77.6455 }, door_id: v.door_id });
     if (b.ride !== false) startSim(v.id, Number(b.speed || 8));
-    return { visit_id: v.id, code: v.code };
+    return { visit_id: v.id };
   },
   // the rider's "Call customer" button: connects the rider to the guide agent
   'POST /api/call-rider': async (b) => {

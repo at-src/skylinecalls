@@ -3,7 +3,31 @@ import { load, save, id, emit } from './store.js';
 import { defaultDoorId } from './doors.js';
 
 export const SERVICES = ['zepto', 'swiggy', 'instamart', 'zomato', 'blinkit', 'bigbasket', 'amazon', 'flipkart', 'myntra', 'meesho', 'dunzo', 'porter', 'uber', 'ola', 'rapido', 'delhivery', 'bluedart', 'dtdc', 'ekart', 'shadowfax'];
-const HOURS = 3;
+// how long an "I'm expecting a Zepto order" holds, unless the owner says a time ("in 50 mins", "by 7pm")
+export const EXPECT_MIN = () => Number(process.env.EXPECT_MIN || 30);
+
+// "in 50 mins", "in an hour", "2 ghante", "half an hour", "by 7:30 pm" -> minutes from now (null if no time said)
+export function windowMinutes(text, now = Date.now()) {
+  const t = String(text || '').toLowerCase();
+  let m = null;
+  const mins = t.match(/(\d+)\s*(?:min|mins|minute|minutes|m)\b/);
+  const hrs = t.match(/(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours|ghanta|ghante)\b/);
+  if (mins) m = Number(mins[1]);
+  else if (hrs) m = Number(hrs[1]) * 60;
+  else if (/half an hour|aadha ghanta|adha ghanta/.test(t)) m = 30;
+  else if (/\b(an|one|ek)\s+(hour|ghanta)\b/.test(t)) m = 60;
+  else {
+    const at = t.match(/\b(?:by|at|till|until)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
+    if (at) {
+      const ist = new Date(now + 5.5 * 3600e3);
+      let h = Number(at[1]) % 12; if (at[3] === 'pm' || (!at[3] && h < 8)) h += 12; // "by 7" in the evening
+      let diff = (h * 60 + Number(at[2] || 0)) - (ist.getUTCHours() * 60 + ist.getUTCMinutes());
+      if (diff <= 0) diff += 24 * 60;
+      m = diff;
+    }
+  }
+  return m == null ? null : Math.max(5, Math.min(12 * 60, Math.round(m)));
+}
 
 const all = () => load('visits', {});
 const put = (v) => { const a = all(); a[v.id] = v; save('visits', a); return v; };
@@ -13,12 +37,11 @@ export function detectService(text) {
   return SERVICES.find((s) => t.includes(s)) || null;
 }
 
-export function createVisit({ service, rider_phone = null, door_id = defaultDoorId(), source = 'telegram' }) {
+export function createVisit({ service, rider_phone = null, door_id = defaultDoorId(), source = 'telegram', minutes = null }) {
   const now = Date.now();
   const v = {
     id: id('v'), service: service || 'delivery', rider_phone, door_id, source,
-    code: String(1000 + Math.floor(Math.random() * 9000)),
-    status: 'active', created: new Date(now).toISOString(), expires: new Date(now + HOURS * 3600e3).toISOString(),
+    status: 'active', created: new Date(now).toISOString(), expires: new Date(now + (minutes || EXPECT_MIN()) * 60e3).toISOString(),
     step: 0, zone: null, log: [],
   };
   emit('visit.created', { visit: v.id, service: v.service, source });
@@ -63,21 +86,26 @@ const digits = (s) => String(s || '').replace(/\D/g, '').slice(-10);
 
 // Checks a caller. Returns { ok, visit?, reason }
 //   - visit_id from our own outbound call (we only dial registered riders): trusted
-//   - otherwise the service must match an active visit, and the code or the caller's number must match
-export function verifyCaller({ visit_id, service, code, caller_number }) {
+//   - the rider's number, if the owner gave one: trusted
+//   - otherwise: he says the service the owner is expecting, inside the expected window. No code: riders don't carry
+//     one, and the window keeps the exposure short. Late, early, or another service -> the owner is asked on Telegram.
+export function verifyCaller({ visit_id, service, caller_number }) {
   if (visit_id && !/[{}]/.test(visit_id)) {
     const v = getVisit(visit_id);
     if (v && v.status === 'active') return { ok: true, visit: v, reason: 'called by us' };
   }
   const svc = detectService(service) || (service ? String(service).toLowerCase().trim() : null);
-  const candidates = activeVisits().filter((v) => !svc || v.service === svc || v.service === 'delivery');
-  if (!candidates.length) return { ok: false, reason: svc ? `no active ${svc} order` : 'no active order' };
-  const byCode = code && candidates.find((v) => v.code === String(code).replace(/\D/g, ''));
-  if (byCode) return { ok: true, visit: byCode, reason: 'code matched' };
-  const byPhone = caller_number && candidates.find((v) => v.rider_phone && digits(v.rider_phone) === digits(caller_number));
+  const active = activeVisits();
+  const byPhone = caller_number && active.find((v) => v.rider_phone && digits(v.rider_phone) === digits(caller_number));
   if (byPhone) return { ok: true, visit: byPhone, reason: 'phone matched' };
-  if (code) return { ok: false, reason: 'wrong code', expected_service: candidates[0].service };
-  return { ok: false, reason: 'need code', expected_service: candidates[0].service };
+  if (!svc) return { ok: false, reason: 'which service', expected_service: active[0]?.service || null };
+  const match = active.filter((v) => v.service === svc || v.service === 'delivery').sort((a, b) => Date.parse(b.created) - Date.parse(a.created))[0];
+  if (match) {
+    // once he's verified, the visit stays open while he's guided (a rider 5 minutes late isn't cut off mid-way)
+    const until = Math.max(Date.parse(match.expires), Date.now() + 45 * 60e3);
+    return { ok: true, visit: updateVisit(match.id, { expires: new Date(until).toISOString(), verified_at: new Date().toISOString() }), reason: 'expected service' };
+  }
+  return { ok: false, reason: `no ${svc} order expected right now` };
 }
 // ---------- the receiver confirms ----------
 // When the rider says it's delivered we don't take his word for it: the visit waits for the receiver to say

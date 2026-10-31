@@ -4,7 +4,7 @@
 //   Allow / Block buttons -> live approval for an unknown caller
 import { env } from './env.js';
 import { emit } from './store.js';
-import { createVisit, activeVisits, awaitingVisits, detectService, closeVisit } from './visits.js';
+import { createVisit, activeVisits, awaitingVisits, detectService, closeVisit, updateVisit, windowMinutes, EXPECT_MIN } from './visits.js';
 import { confirmDelivery } from './guide.js';
 import { setMode, savePerson, KIND_LABEL, ownerMessage } from './assistant.js';
 import { resolveApproval } from './notify.js';
@@ -42,7 +42,7 @@ export function handleText(text) {
   }
   if (/^status/.test(low)) {
     const a = activeVisits();
-    return a.length ? 'Expecting:\n' + a.map((v) => `• ${cap(v.service)} (code ${v.code}), until ${new Date(v.expires).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })}`).join('\n') : 'Nobody is expected right now.';
+    return a.length ? 'Expecting:\n' + a.map((v) => `• ${cap(v.service)}, till ${new Date(v.expires).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })}`).join('\n') : 'Nobody is expected right now.';
   }
   // answering 'did it arrive?'
   if (awaitingVisits().length && /^(not received|not delivered|nahi mila|didn.?t (get|receive)|no\b)/.test(low)) return confirmDelivery(null, false, 'Telegram') ? '' : 'Nothing waiting for an answer.';
@@ -54,11 +54,17 @@ export function handleText(text) {
     return `Closed the ${cap(a.service)} visit.`;
   }
   const service = detectService(low);
-  const ordered = /order|deliver|coming|booked|book|cab|ride|parcel|package|aa raha|aayega/.test(low);
+  const ordered = /order|deliver|coming|booked|book|cab|ride|parcel|package|expect|aa raha|aayega|aane wala/.test(low);
   if (service || ordered) {
     const phone = (t.match(/(?:\+?91)?[6-9]\d{9}/) || [])[0] || null;
-    const v = createVisit({ service: service || 'delivery', rider_phone: phone, source: 'telegram' });
-    return `Got it, expecting ${cap(v.service)} for the next 3 hours.\nDelivery code: ${v.code} (share it on the app's delivery note if you like).\nI'll guide only them and message you as they get close.`;
+    const minutes = windowMinutes(low) || EXPECT_MIN();
+    const svc = service || 'delivery';
+    // the same service again just moves the window ("Zepto in 50 mins" after "expecting Zepto")
+    const open = activeVisits().find((v) => v.service === svc && !v.verified_at);
+    const until = new Date(Date.now() + minutes * 60e3).toISOString();
+    const v = open ? updateVisit(open.id, { expires: until, ...(phone ? { rider_phone: phone } : {}) }) : createVisit({ service: svc, rider_phone: phone, source: 'telegram', minutes });
+    const clock = new Date(v.expires).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+    return `Ok, expecting ${cap(v.service)} in the next ${minutes} min (till ${clock}). I'll guide them to the door and tell you when they're close.${open ? '' : `\nRunning late? Say "${cap(v.service)} in 50 mins".`}`;
   }
   return 'Tell me who is coming, e.g. "order with Swiggy" or "booked a Rapido". Send "status" to see who\'s expected.';
 }
