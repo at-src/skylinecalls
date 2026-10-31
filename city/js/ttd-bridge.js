@@ -77,7 +77,7 @@ export function startBridge({ scene, camera, orbit, applyPreset, weather, footpr
   orbit.addEventListener('start', () => (tween = null));
 
   const night = buildNightLights(fx);
-  const marks = buildHighlights(fx, footprints);
+  const marks = buildHighlights(fx, footprints, () => !!rider);
 
   window.addEventListener('message', (e) => {
     const m = e.data;
@@ -108,9 +108,14 @@ export function startBridge({ scene, camera, orbit, applyPreset, weather, footpr
       night.update(Math.min(dt, 0.05));
       marks.update(dt, elapsed);
       if (ring) {
-        const ph = (elapsed * (pulse.expecting ? 0.6 : 0.4)) % 1;
-        ring.scale.setScalar(6 + ph * (pulse.expecting ? 42 : 24));
-        ringOpacity.value = (1 - ph) * (pulse.expecting ? 0.55 : 0.35);
+        // home pulses only while waiting for someone and no rider is on the map yet; once the rider is moving, his halo
+        // is the one blip and home is a still, faint ring
+        if (rider) { ring.scale.setScalar(10); ringOpacity.value = 0.22; }
+        else {
+          const ph = (elapsed * (pulse.expecting ? 0.6 : 0.4)) % 1;
+          ring.scale.setScalar(6 + ph * (pulse.expecting ? 42 : 24));
+          ringOpacity.value = (1 - ph) * (pulse.expecting ? 0.55 : 0.35);
+        }
       }
       if (rider) {
         if (riderT < 1) {
@@ -322,7 +327,7 @@ function buildNightLights(fx) {
 // spot with no building (a gate, a lane) gets the ring and a short light post. Older marks fade to a faint trace, so
 // the last few stay readable without cluttering the map.
 const MARK_COLOURS = { seen: [0.25, 0.75, 1.9], target: [1.9, 1.0, 0.22], taught: [0.3, 1.6, 0.7] };
-function buildHighlights(fx, footprints) {
+function buildHighlights(fx, footprints, hasRider = () => false) {
   // footprints by 50 m cell, for finding the building at a spot
   const CELL = 50, grid = new Map();
   const key = (i, j) => i * 100003 + j;
@@ -379,11 +384,13 @@ function buildHighlights(fx, footprints) {
   }
   function add(x, z, kind = 'seen', idTag = '') {
     const c = MARK_COLOURS[kind] || MARK_COLOURS.seen;
-    // the newest of each kind is the bright one; the ones before fade to a trace
-    for (const l of live) if (l.kind === kind) l.fadeTo = 0.18;
+    // One pulse on the map: where the rider is now ('seen', or 'taught' while teaching). A new one sends the old ones
+    // to a faint trace. 'target' (the next stop) only glows on its building, with no ring, so nothing else blips.
+    const pulses = kind !== 'target';
+    for (const l of live) if (pulses ? l.pulses : l.kind === 'target') l.fadeTo = 0.18;
     const strength = uniform(0), ringA = uniform(0);
     const f = buildingAt(x, z);
-    const item = { kind, idTag, strength, ringA, t: 0, fadeTo: 1, level: 0, parts: [] };
+    const item = { kind, idTag, strength, ringA, t: 0, fadeTo: 1, level: 0, parts: [], pulses };
     let cx = x, cz = z, r = 7, h = 0;
     if (f) {
       const s = shell(f, c, strength);
@@ -414,6 +421,7 @@ function buildHighlights(fx, footprints) {
   return {
     add, clear,
     update(dt, t) {
+      const riderOnMap = hasRider();
       for (const l of live) {
         l.t += dt;
         // ease towards its level: in quickly when new, slowly down to a trace when superseded
@@ -424,7 +432,9 @@ function buildHighlights(fx, footprints) {
         l.ring.scale.setScalar(l.r * (1.05 + ph * 1.6));
         l.ring.updateMatrix(); l.ring.updateMatrixWorld();
         // only the current marks pulse; once superseded the ring fades out and the building keeps a faint trace
-        l.ringA.value = l.fadeTo < 1 ? (1 - ph) * 0.9 * Math.max(0, (l.level - 0.18) / 0.82) : (1 - ph) * l.level * 0.9;
+        // the rider's own halo is the one blip on the map; a place mark only rings while no rider is on it (teaching
+        // the way, where there's no rider) and only the newest one
+        l.ringA.value = !l.pulses || riderOnMap ? 0 : l.fadeTo < 1 ? 0 : (1 - ph) * l.level * 0.9;
       }
       group.updateMatrixWorld(true);
     }
