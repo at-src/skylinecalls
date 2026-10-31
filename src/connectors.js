@@ -160,6 +160,31 @@ export async function gmailRecent({ query = '', max = 5 } = {}) {
   } catch (e) { emit('connector.error', { id: 'gmail', where: 'list', message: e.message }); return { ok: false, connected: true, messages: [] }; }
 }
 
+// ---------- which day the caller means ----------
+// The model doesn't know today's date, so it passes the caller's words ("kal", "tomorrow", "Monday", "parso") and the
+// server works out the day in IST. Returns { date: 'YYYY-MM-DD', label: 'tomorrow, Sun 1 Nov', past? }.
+const WEEK = [['sunday', 'ravivar', 'itwaar', 'sun'], ['monday', 'somvar', 'mon'], ['tuesday', 'mangalvar', 'tue'], ['wednesday', 'budhvar', 'wed'], ['thursday', 'guruvar', 'veervar', 'thu'], ['friday', 'shukravar', 'fri'], ['saturday', 'shanivar', 'sat']];
+export function resolveDay(text = '', now = Date.now()) {
+  const ist = new Date(now + 5.5 * 3600e3); // shifted so the UTC getters read IST
+  const today = ist.toISOString().slice(0, 10);
+  const t = String(text || '').toLowerCase().trim();
+  let add = 0;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) {
+    if (t < today) return { date: t, label: t, past: true };
+    add = Math.round((Date.parse(t) - Date.parse(today)) / 86400e3);
+  } else if (/\b(day after tomorrow|parso|parson)\b/.test(t)) add = 2;
+  else if (/\b(tomorrow|kal)\b/.test(t)) add = 1;
+  else {
+    const wd = WEEK.findIndex((names) => names.some((n) => new RegExp(`\\b${n}\\b`).test(t)));
+    if (wd >= 0) add = (wd - ist.getUTCDay() + 7) % 7;
+  }
+  const d = new Date(Date.parse(today) + add * 86400e3);
+  const date = d.toISOString().slice(0, 10);
+  const pretty = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const rel = add === 0 ? 'today' : add === 1 ? 'tomorrow' : add === 2 ? 'day after tomorrow' : '';
+  return { date, label: rel ? `${rel}, ${pretty}` : pretty };
+}
+
 // ---------- Calendar: the owner's events for a day, and whether they're free ----------
 // date is 'YYYY-MM-DD' (defaults to today, IST). Returns events and a simple free/busy read.
 export async function calendarBusy(date = '') {

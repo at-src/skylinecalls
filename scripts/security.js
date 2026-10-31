@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 process.env.DRY_RUN = '1';
 process.env.OWNER_NAME = 'Sam'; // tests always run as the placeholder owner
+process.env.END_HOLD_MS = '0'; // tests run tools back to back; the hold has its own test
 process.env.TTD_DATA = mkdtempSync(join(tmpdir(), 'ttd-sec-'));
 process.env.TOOL_TOKEN = 'test-token';
 process.env.OWNER_KEY = 'owner-test-key-0123456789';
@@ -252,6 +253,33 @@ for (const [label, said] of normal) {
   const last = notes().at(-1) || '';
   check('a web caller is reported as "Web caller", never "cut off" or "saved"', /Web caller/.test(last) && !/cut them off|Saved/.test(last), last);
   G.releaseCaller(G.WEB_VISITOR);
+}
+
+{
+  // ending in the same breath as classifying: held, unless sales/spam, a message, or a flag
+  process.env.END_HOLD_MS = '5000';
+  const E1 = '+919000000095', E2 = '+919000000096';
+  await tool('lookup_caller', { caller_number: E1 });
+  await tool('classify_caller', { caller_number: E1, name: 'Inspector Sharma', org: 'Cyber Crime', purpose: 'This is Inspector Sharma', guess: 'vip' });
+  r = await tool('end_call', { caller_number: E1, summary: 'too soon' });
+  check('end_call right after classifying is held until the caller says why they called', r.held === true && !!A.peek(E1), r.say);
+  A.endCall({ caller_number: E1, summary: 'cleanup' }, { force: true });
+  await tool('lookup_caller', { caller_number: E2 });
+  await tool('classify_caller', { caller_number: E2, purpose: 'LIC term plan offer', guess: 'sales' });
+  r = await tool('end_call', { caller_number: E2, kind: 'sales', summary: 'declined' });
+  check('...but sales and spam can still be cut short', r.ok === true && !A.peek(E2));
+  process.env.END_HOLD_MS = '0';
+}
+{
+  // the model never guesses dates: the server turns the caller's words into a day (IST)
+  const { resolveDay } = await import('../src/connectors.js');
+  const sat = Date.parse('2026-10-31T06:00:00Z'); // Sat 31 Oct, 11:30 IST
+  check('"kal" means tomorrow', resolveDay('kal', sat).date === '2026-11-01' && /tomorrow/.test(resolveDay('kal', sat).label));
+  check('"parso" is the day after', resolveDay('parso', sat).date === '2026-11-02');
+  check('"Monday" is the coming Monday', resolveDay('Monday', sat).date === '2026-11-02');
+  check('"somvar" (Hindi) works too', resolveDay('somvar ko', sat).date === '2026-11-02');
+  check('empty means today', resolveDay('', sat).date === '2026-10-31');
+  check('a past date is refused, not read out', resolveDay('2024-04-28', sat).past === true);
 }
 
 console.log('\n== 9. What calendar and mail may reveal, by trust level');

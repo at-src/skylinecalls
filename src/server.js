@@ -20,7 +20,7 @@ import { cityAt } from './city.js';
 import * as A from './assistant.js';
 import * as G from './guard.js';
 import { demoCall, personaList } from './demo/calls.js';
-import { registry as connectorRegistry, disconnect as connectorDisconnect, authUrl, handleCallback, redirectUri, gmailRecent, calendarBusy } from './connectors.js';
+import { registry as connectorRegistry, disconnect as connectorDisconnect, authUrl, handleCallback, redirectUri, gmailRecent, calendarBusy, resolveDay } from './connectors.js';
 const mints = new Map(); let lastMint = 0;
 // web calls this server opened: run id -> { number, at, wrapped (when Varun called end_call) }
 const webRuns = new Map();
@@ -127,7 +127,10 @@ const TOOLS = {
   // trusted (saved close one / VIP, or passcode) gets event titles; known gets busy times only; anyone else nothing.
   async check_calendar(a) {
     const level = A.accessFor(val(a.caller_number));
-    const r = level === 'trusted' || level === 'known' ? await calendarBusy(val(a.date)) : null;
+    const day = resolveDay(val(a.date));
+    if (day.past) return { say: `That date (${day.label}) has already passed. Ask which day they mean.`, level, shared: 'nothing' };
+    const r = level === 'trusted' || level === 'known' ? await calendarBusy(day.date) : null;
+    if (r) r.label = day.label;
     const out = G.calendarReply(level, r, A.profile().owner);
     emit('line.shared', { tool: 'check_calendar', level, shared: out.shared });
     return { ...out, level };
@@ -401,7 +404,7 @@ function followCall(visit, execution, userRole = 'rider', number = '') {
         // owner still gets the one-line summary and the call shows up in the history
         if (number && A.peek(number)) {
           const said = lines.filter((l) => /^user\s*:/i.test(l)).map((l) => l.replace(/^user\s*:\s*/i, '')).join(' ');
-          A.endCall({ caller_number: number, summary: said ? `Hung up before I wrapped up. They said: "${G.cap(said, 180)}"` : 'Hung up without saying anything', outcome: 'caller hung up' });
+          A.endCall({ caller_number: number, summary: said ? `Hung up before I wrapped up. They said: "${G.cap(said, 180)}"` : 'Hung up without saying anything', outcome: 'caller hung up' }, { force: true });
         }
       }
     } catch {}

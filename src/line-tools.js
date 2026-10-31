@@ -16,7 +16,7 @@ export const LINE_DEFS = [
   ['set_reminder', 'The caller wants the owner to call back or be reminded of something at a time. You cannot place calls, so save a reminder; the owner gets a nudge at that time.',
     { caller_number: N, name: S('Who the reminder is about'), text: S('What to remind, e.g. "Call Rahul back about the quote"'), when: S('When, in their words: "6pm", "in 20 minutes", "tomorrow 9am"') }, ['text']],
   ['check_calendar', "Check whether the owner is free on a day, from his Google Calendar. Use when a caller asks if he's available or wants to set a time. The note says what you may share with this caller.",
-    { caller_number: N, date: S('The day to check, as YYYY-MM-DD. Leave empty for today.') }, ['caller_number']],
+    { caller_number: N, date: S('Which day, in the caller\'s words: today, tomorrow, kal, parso, a weekday like Monday, or YYYY-MM-DD. Leave empty for today. Never guess a date.') }, ['caller_number']],
   ['check_mail', "Check whether a mail the caller expects has reached the owner (e.g. an invoice, a confirmation). Read-only. The note says what you may share with this caller.",
     { caller_number: N, query: S('What to look for, in Gmail search terms, e.g. "from:zepto out for delivery".') }, ['caller_number']],
   ['end_call', 'Log the call before hanging up. Always call it once at the end.',

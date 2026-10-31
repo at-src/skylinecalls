@@ -245,7 +245,7 @@ export function classifyCaller({ caller_number, name, org, purpose, guess, visit
   let claimed = '';
   if ((!known || known.kind === 'unknown') && G.PRIVILEGED_KINDS.has(kind)) { claimed = kind; kind = 'unknown'; c.actions.push('claimed to be ' + KIND_LABEL[claimed].toLowerCase() + ': not on file'); }
   if (known?.kind === 'blocked') kind = 'sales';
-  Object.assign(c, { kind, name: name || c.name, org: org || c.org, purpose: purpose || c.purpose, claimed });
+  Object.assign(c, { kind, name: name || c.name, org: org || c.org, purpose: purpose || c.purpose, claimed, classifiedAt: Date.now() });
   const r = profile().rules[kind];
   const out = { kind, label: KIND_LABEL[kind], name: c.name, org: c.org, budget: r.budget, rule: r.say, call_id: c.id };
   if (claimed) {
@@ -301,11 +301,19 @@ export function alertOwner({ caller_number, name, reason }) {
 }
 
 // after every call: log it, learn the caller, tell Sam in one line
-export function endCall({ caller_number, name, org, kind, summary, outcome, block, relation }) {
+export function endCall({ caller_number, name, org, kind, summary, outcome, block, relation }, opts = {}) {
   // the model sometimes calls end_call twice on one call; the second is a no-op, so the owner gets one summary
   const n0 = normNumber(caller_number) || 'unknown';
   if (!live.has(n0) && Date.now() - (endedAt.get(n0) || 0) < 90e3) return { ok: true, say: 'Already logged. Say a short goodbye and hang up.' };
   const c = current(caller_number);
+  // ending in the same breath as sorting the caller means they haven't said why they called yet. Sales/spam and blocked
+  // numbers may be cut short; anyone else gets heard out (unless they left a message or were flagged).
+  const hold = Number(env.END_HOLD_MS ?? 5000);
+  const quick = hold > 0 && c.classifiedAt && Date.now() - c.classifiedAt < hold;
+  if (quick && !c.message && !G.severe(c.flags) && !['sales', 'blocked'].includes(c.kind) && !opts.force) {
+    c.actions.push('end_call held: caller not heard out yet');
+    return { ok: false, held: true, say: `Not yet: the caller hasn't said why they called. Ask in one short line what it is about, listen, and only call end_call when they have finished or said bye.` };
+  }
   live.delete(c.number); endedAt.set(c.number, Date.now());
   G.releaseCaller(c.number);
   // the model's "kind" is a claim like any other: an unsaved number is only ever learned as service/sales/delivery/

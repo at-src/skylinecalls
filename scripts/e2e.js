@@ -7,6 +7,7 @@ import { join } from 'node:path';
 
 process.env.DRY_RUN = '1';
 process.env.OWNER_NAME = 'Sam'; // tests always run as the placeholder owner
+process.env.END_HOLD_MS = '0'; // tests run tools back to back; the hold has its own test
 process.env.TTD_DATA = mkdtempSync(join(tmpdir(), 'ttd-'));
 process.env.APPROVAL_WAIT_MS = '1500';
 process.env.TOOL_TOKEN = 'test-token';
