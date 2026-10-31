@@ -228,6 +228,22 @@ for (const [label, said] of normal) {
   check('a rider is never blocked on the model\'s say-so (only scams are)', A.people()[RD]?.kind !== 'blocked', A.people()[RD]?.kind);
 }
 
+{
+  const D = '+919000000098';
+  await tool('lookup_caller', { caller_number: D });
+  await tool('classify_caller', { caller_number: D, purpose: 'LIC term plan', guess: 'sales' });
+  const before = notes().length;
+  await tool('end_call', { caller_number: D, kind: 'sales', summary: 'first end' });
+  r = await tool('end_call', { caller_number: D, kind: 'sales', summary: 'second end' });
+  check('end_call twice on one call sends the owner one summary, not two', notes().length - before === 1 && /Already logged/.test(r.say), notes().length - before);
+  G.expectCaller(G.WEB_VISITOR);
+  await tool('lookup_caller', { caller_number: G.WEB_VISITOR });
+  await tool('end_call', { caller_number: G.WEB_VISITOR, kind: 'sales', org: 'unknown', summary: 'web test', block: 'true' });
+  const last = notes().at(-1) || '';
+  check('a web caller is reported as "Web caller", never "cut off" or "saved"', /Web caller/.test(last) && !/cut them off|Saved/.test(last), last);
+  G.releaseCaller(G.WEB_VISITOR);
+}
+
 console.log('\n== 9. What calendar and mail may reveal, by trust level');
 const cal = { connected: true, ok: true, date: '2026-10-26', free: false, events: [
   { summary: 'Therapy with Dr. Mehta', start: '2026-10-26T16:00:00+05:30', end: '2026-10-26T17:00:00+05:30' },

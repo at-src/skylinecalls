@@ -55,7 +55,8 @@ const CALIB_DEFS = [
 ];
 // Varun's line: every call. The delivery tools (minus verify_caller, which classify_caller runs) come along.
 // The line tools live in src/line-tools.js so the red-team eval tests exactly what's deployed.
-const PRE = { lookup_caller: '', classify_caller: '', check_passcode: 'Ek second', take_message: '', alert_owner: '', set_reminder: '', end_call: '', verify_caller: 'Haan ji, bolo', ask_customer: 'Haan, ruko ek second', check_approval: 'Haan ek second', next_instruction: '', rider_status: '', call_customer: 'Ruko, bulata hoon', log_outcome: '', check_calendar: 'Ek second, dekhta hoon', check_mail: 'Ek second, check karta hoon' };
+// what Varun says while a tool runs (otherwise Bolna fills the pause with an English "Just give me a moment…")
+const PRE = { lookup_caller: 'Haan ji', classify_caller: 'Achha', check_passcode: 'Ek second', take_message: 'Haan, likh raha hoon', alert_owner: 'Ek minute', set_reminder: 'Haan, note kar liya', end_call: 'Theek hai', verify_caller: 'Haan ji, bolo', ask_customer: 'Haan, ruko ek second', check_approval: 'Haan ek second', next_instruction: 'Haan', rider_status: 'Ek second', call_customer: 'Ruko, bulata hoon', log_outcome: 'Theek hai', check_calendar: 'Ek second, dekhta hoon', check_mail: 'Ek second, check karta hoon' };
 
 const toolsFor = (defs) => ({
   tools: defs.map(([name, description, properties, required]) => ({

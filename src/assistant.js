@@ -164,6 +164,7 @@ function sortCaller({ name, org, purpose, guess }) {
 
 // ---------- the call itself ----------
 const live = new Map(); // number -> the call in progress
+const endedAt = new Map(); // number -> when its last call was logged (to ignore a repeated end_call)
 function current(number) {
   const n = normNumber(number) || 'unknown';
   if (!live.has(n)) live.set(n, { id: id('c'), number: n, started: Date.now(), kind: 'unknown', name: '', org: '', actions: [], flags: [] });
@@ -298,8 +299,11 @@ export function alertOwner({ caller_number, name, reason }) {
 
 // after every call: log it, learn the caller, tell Sam in one line
 export function endCall({ caller_number, name, org, kind, summary, outcome, block, relation }) {
+  // the model sometimes calls end_call twice on one call; the second is a no-op, so the owner gets one summary
+  const n0 = normNumber(caller_number) || 'unknown';
+  if (!live.has(n0) && Date.now() - (endedAt.get(n0) || 0) < 90e3) return { ok: true, say: 'Already logged. Say a short goodbye and hang up.' };
   const c = current(caller_number);
-  live.delete(c.number);
+  live.delete(c.number); endedAt.set(c.number, Date.now());
   G.releaseCaller(c.number);
   // the model's "kind" is a claim like any other: an unsaved number is only ever learned as service/sales/delivery/
   // unknown (or close, if the server itself checked the passcode)
@@ -325,8 +329,12 @@ export function endCall({ caller_number, name, org, kind, summary, outcome, bloc
   const log = calls(); log.unshift(rec); save('calls', log.slice(0, 200));
   emit('line.ended', rec);
   const icon = { blocked: '🚫', sales: '🚫', service: '📱', close: '💛', vip: '⭐', known: '📞', delivery: '📦', unknown: '📞' }[rec.kind] || '📞';
-  const label = who ? `${who}${rec.org && rec.org !== who ? ` (${rec.org})` : ''}` : rec.org || showNumber(c.number);
-  const tail = c.kind === 'blocked' ? ' Cut off.' : doBlock ? ` I'll cut them off next time.` : !before && c.number !== 'unknown' ? ` Saved ${showNumber(c.number)} as ${KIND_LABEL[k].toLowerCase()}.` : '';
+  // a browser caller has no real number, so nothing is saved or blocked for them; say so plainly
+  const web = c.number === G.WEB_VISITOR;
+  const orgShown = rec.org && !/^(unknown|none|n\/a)$/i.test(rec.org) ? rec.org : '';
+  const label = who ? `${who}${orgShown && orgShown !== who ? ` (${orgShown})` : ''}` : orgShown || (web ? 'Web caller' : showNumber(c.number));
+  const saved = c.number !== 'unknown' && !web && !c.spoofed;
+  const tail = c.kind === 'blocked' ? ' Cut off.' : !saved ? '' : doBlock ? ` I'll cut them off next time.` : !before ? ` Saved ${showNumber(c.number)} as ${KIND_LABEL[k].toLowerCase()}.` : '';
   // a message already went to Sam on its own; the summary would only repeat it
   if (k !== 'delivery' && !c.message) notify(`${icon} ${label}, ${seconds}s: ${summary || outcome || 'call handled'}.${tail}`);
   return { ok: true, say: 'Logged. Say a short goodbye and hang up.' };
