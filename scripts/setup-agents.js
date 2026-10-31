@@ -79,7 +79,13 @@ const agentBody = ({ name, welcome, prompt, tools, terminate = 600 }) => ({
     tasks: [{
       task_type: 'conversation',
       toolchain: { execution: 'parallel', pipelines: [['transcriber', 'llm', 'synthesizer']] },
-      task_config: { hangup_after_silence: 20, call_terminate: terminate, optimize_latency: true, number_of_words_for_interruption: 2, incremental_delay: 400, backchanneling: false, use_fillers: false },
+      task_config: {
+        hangup_after_silence: 15, call_terminate: terminate, optimize_latency: true, number_of_words_for_interruption: 2, incremental_delay: 400, backchanneling: false, use_fillers: false,
+        // in Hinglish, like the rest of the call (Bolna's default is an English "Hey, are you still there")
+        check_if_user_online: true, check_user_online_message: 'Hello? Aap line pe hain?', trigger_user_online_message_after: 10,
+        // the call ends on silence after the goodbye; Bolna's prompt-based hangup is left off until it's tested
+        hangup_after_LLMCall: false, call_cancellation_prompt: null,
+      },
       tools_config: {
         input: { format: 'wav', provider: 'plivo' },
         output: { format: 'wav', provider: 'plivo' },
